@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Accounts - Sign in</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="center">
+  <div class="card login">
+    <h1>Accounts</h1>
+    <p class="muted">Sign in to continue</p>
+
+    <label for="u">Username</label>
+    <input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
+
+    <label for="p">Password</label>
+    <input id="p" type="password" autocomplete="current-password">
+
+    <label class="chk"><input type="checkbox" id="show"> Show password</label>
+
+    <button id="go">Sign in</button>
+    <p id="msg" class="err"></p>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (Store.token) location.replace('app.html');
+
+  const $ = id => document.getElementById(id);
+  $('show').onchange = () => { $('p').type = $('show').checked ? 'text' : 'password'; };
+
+  async function signIn() {
+    $('msg').textContent = '';
+    const username = $('u').value.trim(), password = $('p').value;
+    if (!username || !password) { $('msg').textContent = 'Enter username and password.'; return; }
+    $('go').disabled = true; $('go').textContent = 'Signing in...';
+    try {
+      const r = await api('login', { username: username, password: password });
+      Store.save(r.token, r.user);
+      location.replace('app.html');
+    } catch (e) {
+      $('msg').textContent = e.message;
+      $('go').disabled = false; $('go').textContent = 'Sign in';
+    }
+  }
+  $('go').onclick = signIn;
+  $('p').addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+</script>
+</body>
+</html>

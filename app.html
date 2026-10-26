@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Accounts</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="who"><b id="name"></b><small id="role"></small></div>
+  <button class="ghost" id="logout">Log out</button>
+</header>
+
+<main class="wrap">
+  <div class="grid" id="menu"></div>
+
+  <div class="card" style="max-width:380px">
+    <h2>Change my password</h2>
+    <label for="op">Current password</label>
+    <input id="op" type="password" autocomplete="current-password">
+    <label for="np">New password (min 8 characters)</label>
+    <input id="np" type="password" autocomplete="new-password">
+    <button id="chg">Change password</button>
+    <p id="pmsg" class="err"></p>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !Store.user) location.replace('index.html');
+  const $ = id => document.getElementById(id);
+  const user = Store.user;
+  $('name').textContent = user.fullName;
+  $('role').textContent = user.role;
+
+  // Menu tiles. 'perms' = which permissions unlock the tile. 'step' = when it gets built.
+  const MENU = [
+    { t: 'Orders & Invoices', d: 'New order, status, invoice PDF', perms: ['orders'], step: 4 },
+    { t: 'Customers', d: 'Customer list and history', perms: ['customers', 'customers_view'], step: 4 },
+    { t: 'Purchases & Stock', d: 'Purchase invoices, batches', perms: ['purchases'], step: 6 },
+    { t: 'Courier Payments', d: 'Receivables, remittances', perms: ['payments'], step: 7 },
+    { t: 'Vendor Payments', d: 'Payables and ledger', perms: ['payments'], step: 8 },
+    { t: 'Expenses', d: 'Direct and indirect', perms: ['expenses'], step: 8 },
+    { t: 'Reports & P&L', d: 'Statements, profit and loss', perms: ['reports'], step: 9 },
+    { t: 'Users & Access', d: 'Add users, set permissions', perms: ['users'], step: 3.5 }
+  ];
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 2500);
+  }
+
+  const menu = $('menu');
+  MENU.filter(m => m.perms.some(can)).forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.style.width = 'auto'; b.style.marginTop = '0'; b.style.color = 'inherit';
+    const t = document.createElement('b'); t.textContent = m.t;
+    const d = document.createElement('span'); d.textContent = m.d;
+    b.append(t, d);
+    b.onclick = () => toast('Coming in Step ' + m.step);
+    menu.appendChild(b);
+  });
+  if (!menu.children.length) menu.textContent = 'No modules are enabled for your role yet.';
+
+  $('logout').onclick = async () => {
+    try { await api('logout'); } catch (e) {}
+    Store.clear(); location.replace('index.html');
+  };
+
+  $('chg').onclick = async () => {
+    const m = $('pmsg'); m.className = 'err'; m.textContent = '';
+    $('chg').disabled = true;
+    try {
+      await api('changePassword', { oldPassword: $('op').value, newPassword: $('np').value });
+      m.className = 'good'; m.textContent = 'Password changed.';
+      $('op').value = ''; $('np').value = '';
+    } catch (e) { m.textContent = e.message; }
+    $('chg').disabled = false;
+  };
+</script>
+</body>
+</html>
