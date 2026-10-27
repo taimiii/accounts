@@ -46,7 +46,7 @@
     { t: 'Vendor Payments', d: 'Payables and ledger', perms: ['payments'], step: 8 },
     { t: 'Expenses', d: 'Direct and indirect', perms: ['expenses'], step: 8 },
     { t: 'Reports & P&L', d: 'Statements, profit and loss', perms: ['reports'], step: 9 },
-    { t: 'Users & Access', d: 'Add users, set permissions', perms: ['users'], step: 3.5 }
+    { t: 'Users & Access', d: 'Add users, set permissions', perms: ['users'], page: 'users.html' }
   ];
 
   function toast(msg) {
@@ -62,7 +62,7 @@
     const t = document.createElement('b'); t.textContent = m.t;
     const d = document.createElement('span'); d.textContent = m.d;
     b.append(t, d);
-    b.onclick = () => toast('Coming in Step ' + m.step);
+    b.onclick = () => { if (m.page) location.href = m.page; else toast('Coming in Step ' + m.step); };
     menu.appendChild(b);
   });
   if (!menu.children.length) menu.textContent = 'No modules are enabled for your role yet.';
