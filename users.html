@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Users & Access</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  select { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line);
+           border-radius: 8px; background: var(--bg); color: var(--text); }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+         padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row small { display: block; color: var(--muted); }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
+  input[type=checkbox] { width: auto; }
+  .hide { display: none; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; }
+  .btns button { margin-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Users &amp; Access</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <!-- USERS -->
+  <div class="card">
+    <h2>Users</h2>
+    <div id="ulist"></div>
+    <button id="addU">Add user</button>
+  </div>
+
+  <div class="card hide sp" id="uform">
+    <h2 id="utitle">Add user</h2>
+    <label>Username (lowercase, no spaces)</label><input id="uname" type="text" autocapitalize="none" autocomplete="off">
+    <label>Full name</label><input id="fname" type="text" autocomplete="off">
+    <label>Role</label><select id="urole"></select>
+    <label>Store access</label>
+    <div class="checks" id="stores"></div>
+    <div class="checks">
+      <label><input type="checkbox" id="hidec"> Hide cost and profit from this user</label>
+      <label><input type="checkbox" id="act" checked> Active (can sign in)</label>
+    </div>
+    <label id="pwlabel">Password (min 8 characters)</label><input id="upw" type="password" autocomplete="new-password">
+    <div class="btns">
+      <button id="saveU">Save user</button>
+      <button class="ghost" id="cancelU">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ROLES -->
+  <div class="card sp">
+    <h2>Roles</h2>
+    <p class="muted">A role is a set of permissions. Changes apply the next time a user signs in.</p>
+    <div id="rlist"></div>
+    <button id="addR">Add role</button>
+  </div>
+
+  <div class="card hide sp" id="rform">
+    <h2 id="rtitle">Add role</h2>
+    <label>Role name</label><input id="rname" type="text" autocomplete="off">
+    <label>Permissions</label>
+    <div class="checks" id="perms"></div>
+    <div class="btns">
+      <button id="saveR">Save role</button>
+      <button class="ghost" id="cancelR">Cancel</button>
+    </div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('users')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const LABELS = {
+    orders: 'Create orders and invoices', customers: 'Customers (add and edit)',
+    customers_view: 'Customers (view only)', purchases: 'Purchases and stock',
+    payments: 'Courier and vendor payments', expenses: 'Expenses',
+    reports: 'Reports and P&L', export: 'Export to Excel', users: 'Manage users and roles'
+  };
+  let users = [], roles = [], allPerms = [], stores = [], editingId = null, editingRole = null;
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function el(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text !== undefined) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  function check(value, text, checked, attr) {
+    const l = el('label'); const i = el('input'); i.type = 'checkbox'; i.value = value; i.checked = checked;
+    if (attr) i.setAttribute(attr, '1');
+    l.append(i, document.createTextNode(' ' + text)); return l;
+  }
+
+  async function load() {
+    try {
+      const [u, r, l] = await Promise.all([api('listUsers'), api('listRoles'), api('getLists')]);
+      users = u; roles = r.roles; allPerms = r.allPerms; stores = l.stores;
+      renderUsers(); renderRoles();
+      $('sub').textContent = users.length + ' users, ' + roles.length + ' roles';
+    } catch (e) { toast(e.message); }
+  }
+
+  /* ---------- Users ---------- */
+  function renderUsers() {
+    const box = $('ulist'); box.textContent = '';
+    users.forEach(u => {
+      const row = el('div', undefined, 'row');
+      const left = el('div');
+      const name = el('b', u.FullName); name.append(el('span', String(u.Active).toUpperCase() === 'TRUE' ? 'Active' : 'Disabled', 'tag'));
+      left.append(name, el('small', u.Username + '  |  ' + u.Role + '  |  stores: ' + (u.StoreAccess || 'all')));
+      const b = el('button', 'Edit', 'ghost'); b.onclick = () => openUser(u);
+      row.append(left, b); box.appendChild(row);
+    });
+  }
+
+  function openUser(u) {
+    editingId = u ? u.UserID : null;
+    $('utitle').textContent = u ? 'Edit user' : 'Add user';
+    $('uname').value = u ? u.Username : '';
+    $('fname').value = u ? u.FullName : '';
+    $('hidec').checked = u ? String(u.HideCostProfit).toUpperCase() === 'TRUE' : false;
+    $('act').checked = u ? String(u.Active).toUpperCase() === 'TRUE' : true;
+    $('upw').value = '';
+    $('pwlabel').textContent = u ? 'New password (leave empty to keep the current one)' : 'Password (min 8 characters)';
+
+    const sel = $('urole'); sel.textContent = '';
+    roles.forEach(r => { const o = el('option', r.RoleName); o.value = r.RoleName; sel.appendChild(o); });
+    if (u) sel.value = u.Role;
+
+    const acc = u ? String(u.StoreAccess || 'all') : 'all';
+    const list = acc === 'all' ? [] : acc.split(',').map(x => x.trim());
+    const box = $('stores'); box.textContent = '';
+    const all = check('all', 'All stores', acc === 'all'); all.firstChild.id = 'allst'; box.appendChild(all);
+    stores.forEach(s => box.appendChild(check(s.StoreID, s.StoreName, list.indexOf(s.StoreID) > -1, 'data-s')));
+    $('uform').classList.remove('hide'); $('uform').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  $('addU').onclick = () => openUser(null);
+  $('cancelU').onclick = () => $('uform').classList.add('hide');
+  $('saveU').onclick = async () => {
+    const all = $('allst').checked;
+    const sel = [...document.querySelectorAll('#stores input[data-s]:checked')].map(x => x.value);
+    if (!all && !sel.length) { toast('Pick at least one store, or All stores.'); return; }
+    $('saveU').disabled = true;
+    try {
+      await api('saveUser', {
+        userId: editingId, username: $('uname').value, fullName: $('fname').value,
+        role: $('urole').value, storeAccess: all ? 'all' : sel.join(','),
+        hideCost: $('hidec').checked, active: $('act').checked, password: $('upw').value
+      });
+      toast('User saved.'); $('uform').classList.add('hide'); await load();
+    } catch (e) { toast(e.message); }
+    $('saveU').disabled = false;
+  };
+
+  /* ---------- Roles ---------- */
+  function renderRoles() {
+    const box = $('rlist'); box.textContent = '';
+    roles.forEach(r => {
+      const row = el('div', undefined, 'row');
+      const left = el('div'); left.append(el('b', r.RoleName), el('small', r.Permissions || '(no permissions)'));
+      row.appendChild(left);
+      if (r.RoleName !== 'Owner') { const b = el('button', 'Edit', 'ghost'); b.onclick = () => openRole(r); row.appendChild(b); }
+      box.appendChild(row);
+    });
+  }
+
+  function openRole(r) {
+    editingRole = r ? r.RoleName : null;
+    $('rtitle').textContent = r ? 'Edit role' : 'Add role';
+    $('rname').value = r ? r.RoleName : ''; $('rname').readOnly = !!r;
+    const have = r ? String(r.Permissions).split(',').map(x => x.trim()) : [];
+    const box = $('perms'); box.textContent = '';
+    allPerms.forEach(p => box.appendChild(check(p, LABELS[p] || p, have.indexOf(p) > -1)));
+    $('rform').classList.remove('hide'); $('rform').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  $('addR').onclick = () => openRole(null);
+  $('cancelR').onclick = () => $('rform').classList.add('hide');
+  $('saveR').onclick = async () => {
+    const perms = [...document.querySelectorAll('#perms input:checked')].map(x => x.value);
+    $('saveR').disabled = true;
+    try {
+      await api('saveRole', { name: $('rname').value, perms: perms });
+      toast('Role saved.'); $('rform').classList.add('hide'); await load();
+    } catch (e) { toast(e.message); }
+    $('saveR').disabled = false;
+  };
+
+  load();
+</script>
+</body>
+</html>
