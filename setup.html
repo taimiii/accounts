@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Setup lists</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .chip { width: auto; margin: 0; padding: 8px 14px; border: 1px solid var(--line); background: var(--card);
+          color: var(--text); border-radius: 99px; font-weight: 500; font-size: .9rem; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+         padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row small { display: block; color: var(--muted); }
+  .acts { display: flex; gap: 6px; justify-content: flex-end; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
+  input[type=checkbox] { width: auto; }
+  .hide { display: none; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button { margin-top: 12px; flex: 1 1 140px; }
+  @media (max-width: 520px) {
+    .row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .acts button { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Setup lists</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="chips" id="tabs"></div>
+
+  <div class="card">
+    <input id="q" type="text" placeholder="Search in this list" autocomplete="off">
+    <div class="btns"><button id="addBtn" disabled>Loading...</button></div>
+  </div>
+
+  <div class="card hide sp" id="form">
+    <h2 id="ftitle"></h2>
+    <div id="fields"></div>
+    <div class="btns">
+      <button id="save">Save</button>
+      <button class="ghost" id="cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="card sp"><div id="list"></div></div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('users')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let tab = 'Products', data = null, editingId = null, picks = {}, inputs = {};
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function el(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text !== undefined) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  const isOn = v => String(v).toUpperCase() === 'TRUE';
+
+  async function loadTab(t) {
+    tab = t; $('err').textContent = ''; $('form').classList.add('hide'); $('q').value = '';
+    $('list').textContent = 'Loading...'; $('addBtn').disabled = true;
+    try {
+      data = await api('getMasterTab', { tab: t });
+      renderTabs(); renderList();
+      $('addBtn').disabled = false; $('addBtn').textContent = 'Add new';
+    } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
+  }
+
+  function renderTabs() {
+    const box = $('tabs'); box.textContent = '';
+    data.index.forEach(i => {
+      const b = el('button', i.title, 'chip' + (i.tab === tab ? ' on' : ''));
+      b.onclick = () => loadTab(i.tab);
+      box.appendChild(b);
+    });
+  }
+
+  // Show linked fields by name instead of ID
+  function display(f, row) {
+    const v = row[f.k];
+    if (v === '' || v === undefined) return '';
+    if (f.t === 'ref') { const o = (data.refs[f.ref] || []).find(x => x.id === v); return o ? o.label : v; }
+    return String(v);
+  }
+
+  function renderList() {
+    const sp = data.spec, q = $('q').value.trim().toLowerCase();
+    $('sub').textContent = sp.title + ': ' + data.rows.length;
+    const box = $('list'); box.textContent = '';
+    const rows = data.rows.filter(r => !q || String(r[sp.label]).toLowerCase().indexOf(q) > -1);
+    rows.forEach(r => {
+      const row = el('div', undefined, 'row');
+      const left = el('div');
+      const name = el('b', String(r[sp.label]));
+      if (r.Active !== undefined && !isOn(r.Active)) name.append(el('span', 'Inactive', 'tag'));
+      left.appendChild(name);
+      const bits = sp.show.map(k => {
+        const f = sp.fields.find(x => x.k === k);
+        const val = display(f, r);
+        return val ? f.l + ': ' + val : '';
+      }).filter(Boolean);
+      if (bits.length) left.appendChild(el('small', bits.join('  |  ')));
+      const b = el('button', 'Edit', 'ghost'); b.onclick = () => openForm(r);
+      const acts = el('div', undefined, 'acts'); acts.appendChild(b);
+      row.append(left, acts); box.appendChild(row);
+    });
+    if (!rows.length) box.textContent = data.rows.length ? 'No match.' : 'Nothing here yet. Tap "Add new".';
+  }
+  $('q').addEventListener('input', renderList);
+
+  /* ---------- Form built from the list definition ---------- */
+  function openForm(r) {
+    const sp = data.spec;
+    editingId = r ? r[sp.id] : null; picks = {}; inputs = {};
+    $('ftitle').textContent = (r ? 'Edit ' : 'Add ') + sp.title.toLowerCase().replace(/s$/, '');
+    const box = $('fields'); box.textContent = '';
+
+    sp.fields.forEach(f => {
+      const cur = r ? r[f.k] : (f.def !== undefined ? f.def : '');
+      if (f.t === 'bool') {
+        const l = el('label'); l.className = 'chk'; const i = el('input'); i.type = 'checkbox';
+        i.checked = r ? isOn(cur) : !!f.def; inputs[f.k] = i;
+        l.append(i, document.createTextNode(' ' + f.l)); box.appendChild(l); return;
+      }
+      box.appendChild(el('label', f.l + (f.req ? ' *' : '')));
+      if (f.t === 'select' || f.t === 'ref') {
+        picks[f.k] = cur === undefined ? '' : String(cur);
+        const wrap = el('div', undefined, 'checks'); box.appendChild(wrap);
+        const opts = f.t === 'select' ? f.opts.map(o => ({ id: o, label: o }))
+                                      : (data.refs[f.ref] || []).filter(o => o.active || o.id === picks[f.k]);
+        if (!opts.length) wrap.textContent = 'No ' + f.ref.toLowerCase() + ' yet. Add them first.';
+        opts.forEach(o => {
+          const l = el('label'); const i = el('input'); i.type = 'checkbox'; i.checked = o.id === picks[f.k];
+          i.onchange = () => {
+            wrap.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; });
+            picks[f.k] = i.checked ? o.id : '';
+          };
+          l.append(i, document.createTextNode(' ' + o.label)); wrap.appendChild(l);
+        });
+        return;
+      }
+      const i = el('input'); i.type = 'text'; i.autocomplete = 'off';
+      if (f.t === 'number') i.inputMode = 'decimal';
+      i.value = cur === undefined || cur === null ? '' : cur; inputs[f.k] = i; box.appendChild(i);
+    });
+    $('form').classList.remove('hide'); $('form').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  $('addBtn').onclick = () => openForm(null);
+  $('cancel').onclick = () => $('form').classList.add('hide');
+  $('save').onclick = async () => {
+    const values = {};
+    data.spec.fields.forEach(f => {
+      if (f.t === 'bool') values[f.k] = inputs[f.k].checked;
+      else if (f.t === 'select' || f.t === 'ref') values[f.k] = picks[f.k];
+      else values[f.k] = inputs[f.k].value;
+    });
+    $('save').disabled = true;
+    try {
+      await api('saveMasterRow', { tab: tab, id: editingId, values: values });
+      toast('Saved.'); await loadTab(tab);
+    } catch (e) { toast(e.message); }
+    $('save').disabled = false;
+  };
+
+  loadTab('Products');
+</script>
+</body>
+</html>
