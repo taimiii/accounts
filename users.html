@@ -42,6 +42,8 @@
 </header>
 
 <main class="wrap">
+  <p class="err" id="err"></p>
+  <button class="ghost" id="reload" style="margin-bottom:12px">Reload data</button>
   <!-- USERS -->
   <div class="card">
     <h2>Users</h2>
@@ -54,7 +56,7 @@
     <label>Username (lowercase, no spaces)</label><input id="uname" type="text" autocapitalize="none" autocomplete="off">
     <label>Full name</label><input id="fname" type="text" autocomplete="off">
     <label>Role (pick one)</label>
-    <div class="chips" id="urole"></div>
+    <div class="checks" id="urole"></div>
     <label>Store access</label>
     <div class="checks" id="stores"></div>
     <div class="checks">
@@ -119,13 +121,23 @@
   }
 
   async function load() {
-    try {
-      const [u, r, l] = await Promise.all([api('listUsers'), api('listRoles'), api('getLists')]);
-      users = u; roles = r.roles; allPerms = r.allPerms; stores = l.stores;
-      renderUsers(); renderRoles();
-      $('sub').textContent = users.length + ' users, ' + roles.length + ' roles';
-    } catch (e) { toast(e.message); }
+    const errs = [];
+    const get = async (name, fn) => { try { return await fn(); } catch (e) { errs.push(name + ': ' + e.message); return null; } };
+    const [u, r, l] = await Promise.all([
+      get('Users', () => api('listUsers')),
+      get('Roles', () => api('listRoles')),
+      get('Stores', () => api('getLists'))
+    ]);
+    if (u) users = u;
+    if (r) { roles = r.roles; allPerms = r.allPerms; }
+    if (l) stores = l.stores;
+    $('err').textContent = errs.join('  |  ');
+    try { renderUsers(); } catch (e) { errs.push('Users list: ' + e.message); }
+    try { renderRoles(); } catch (e) { errs.push('Roles list: ' + e.message); }
+    $('err').textContent = errs.join('  |  ');
+    $('sub').textContent = users.length + ' users, ' + roles.length + ' roles';
   }
+  $('reload').onclick = load;
 
   /* ---------- Users ---------- */
   function renderUsers() {
@@ -158,12 +170,15 @@
 
     const sel = $('urole'); sel.textContent = '';
     pickedRole = u ? u.Role : '';
-    if (!roles.length) sel.textContent = 'No roles found. Add a role first.';
+    if (!roles.length) sel.textContent = 'No roles loaded. See the red message at the top, then press Reload data.';
     roles.forEach(r => {
-      const b = el('button', r.RoleName, 'chip' + (r.RoleName === pickedRole ? ' on' : ''));
-      b.type = 'button';
-      b.onclick = () => { pickedRole = r.RoleName; [...sel.children].forEach(c => c.classList.toggle('on', c === b)); };
-      sel.appendChild(b);
+      const l = check(r.RoleName, r.RoleName, r.RoleName === pickedRole);
+      const cb = l.firstChild;
+      cb.onchange = () => {
+        sel.querySelectorAll('input').forEach(x => { if (x !== cb) x.checked = false; });
+        pickedRole = cb.checked ? r.RoleName : '';
+      };
+      sel.appendChild(l);
     });
 
     const acc = u ? String(u.StoreAccess || 'all') : 'all';
