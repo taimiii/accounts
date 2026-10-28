@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Customers</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+         padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row small { display: block; color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .tag.bad { color: var(--err); border-color: var(--err); }
+  .hide { display: none; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button { margin-top: 12px; flex: 1 1 140px; }
+  .kv { margin: 4px 0; overflow-wrap: anywhere; }
+  .kv span { color: var(--muted); }
+  @media (max-width: 520px) {
+    .row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .acts { justify-content: stretch; }
+    .acts button { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Customers</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+
+  <div class="card">
+    <input id="q" type="text" placeholder="Search name, phone, city or tag" autocomplete="off">
+    <div class="btns">
+      <button id="addC" disabled>Loading...</button>
+      <button class="ghost" id="exp" style="display:none">Export Excel</button>
+    </div>
+  </div>
+
+  <!-- Customer details + purchase history -->
+  <div class="card hide sp" id="detail"></div>
+
+  <!-- Add / edit form -->
+  <div class="card hide sp" id="cform">
+    <h2 id="ctitle">Add customer</h2>
+    <label>Name</label><input id="cname" type="text" autocomplete="off">
+    <label>Mobile (e.g. 03001234567)</label><input id="cphone" type="text" inputmode="tel" autocomplete="off">
+    <label>City</label><input id="ccity" type="text" autocomplete="off">
+    <label>Address</label><input id="caddr" type="text" autocomplete="off">
+    <label>Email (optional)</label><input id="cemail" type="text" inputmode="email" autocapitalize="none" autocomplete="off">
+    <label>Tags (optional, e.g. repeat, VIP)</label><input id="ctags" type="text" autocomplete="off">
+    <label>Notes (optional)</label><input id="cnotes" type="text" autocomplete="off">
+    <div class="btns">
+      <button id="saveC">Save customer</button>
+      <button class="ghost" id="cancelC">Cancel</button>
+    </div>
+  </div>
+
+  <div class="card sp">
+    <div id="clist"></div>
+    <p class="muted" id="more"></p>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !(can('customers') || can('customers_view'))) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const canEdit = can('customers');
+  let all = [], filtered = [], editingId = null;
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3000);
+  }
+  function el(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text !== undefined) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  const money = n => 'Rs ' + Math.round(Number(n || 0)).toLocaleString('en-PK');
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
+  const waLink = p => 'https://wa.me/92' + String(p).replace(/^0/, '');
+
+  async function load() {
+    try {
+      all = await api('listCustomers');
+      $('err').textContent = '';
+      render();
+    } catch (e) { $('err').textContent = e.message; }
+    $('addC').disabled = !canEdit; $('addC').textContent = canEdit ? 'Add customer' : 'View only';
+    $('exp').style.display = can('export') ? '' : 'none';
+  }
+
+  /* ---------- List ---------- */
+  function render() {
+    const q = $('q').value.trim().toLowerCase();
+    filtered = all.filter(c => !q ||
+      [c.Name, c.Phone, c.City, c.Tags, c.Email].join(' ').toLowerCase().indexOf(q) > -1);
+    $('sub').textContent = all.length + ' customers';
+    const box = $('clist'); box.textContent = '';
+    filtered.slice(0, 100).forEach(c => {
+      const row = el('div', undefined, 'row');
+      const left = el('div');
+      const name = el('b', c.Name);
+      if (c.stats.returned >= 2) name.append(el('span', 'Risky', 'tag bad'));
+      left.append(name,
+        el('small', c.Phone + (c.City ? '  |  ' + c.City : '')),
+        el('small', c.stats.orders + ' orders  |  ' + c.stats.delivered + ' delivered  |  ' +
+                    c.stats.returned + ' returned  |  ' + money(c.stats.spent)));
+      const v = el('button', 'View', 'ghost'); v.onclick = () => openDetail(c);
+      const w = el('button', 'WhatsApp', 'ghost'); w.onclick = () => window.open(waLink(c.Phone), '_blank', 'noopener');
+      const acts = el('div', undefined, 'acts'); acts.append(v, w);
+      row.append(left, acts); box.appendChild(row);
+    });
+    if (!filtered.length) box.textContent = all.length ? 'No match.' : 'No customers yet.';
+    $('more').textContent = filtered.length > 100 ? 'Showing first 100 of ' + filtered.length + '. Search to narrow down.' : '';
+  }
+  $('q').addEventListener('input', render);
+
+  /* ---------- Detail + history ---------- */
+  async function openDetail(c) {
+    const d = $('detail'); d.textContent = '';
+    d.classList.remove('hide');
+    d.append(el('h2', c.Name));
+    [['Mobile', c.Phone], ['City', c.City], ['Address', c.Address], ['Email', c.Email],
+     ['Tags', c.Tags], ['Notes', c.Notes],
+     ['Orders', c.stats.orders + ' (' + c.stats.delivered + ' delivered, ' + c.stats.returned + ' returned)'],
+     ['Total spent', money(c.stats.spent)],
+     ['Last order', c.stats.lastTs ? day(c.stats.lastTs) : '-']
+    ].forEach(kv => { if (kv[1]) { const p = el('p', undefined, 'kv'); p.append(el('span', kv[0] + ': '), document.createTextNode(kv[1])); d.appendChild(p); } });
+
+    const btns = el('div', undefined, 'btns');
+    if (canEdit) { const e = el('button', 'Edit'); e.onclick = () => openForm(c); btns.appendChild(e); }
+    const x = el('button', 'Close', 'ghost'); x.onclick = () => d.classList.add('hide'); btns.appendChild(x);
+    d.appendChild(btns);
+
+    d.append(el('h2', 'Purchase history'));
+    const hist = el('div', 'Loading...', 'muted'); d.appendChild(hist);
+    d.scrollIntoView({ behavior: 'smooth' });
+    try {
+      const rows = await api('getCustomerHistory', { customerId: c.CustomerID });
+      hist.textContent = '';
+      if (!rows.length) hist.textContent = 'No orders yet.';
+      rows.forEach(o => {
+        const r = el('div', undefined, 'row');
+        const l = el('div'); l.append(el('b', o.InvoiceNo || '-'), el('small', day(o.OrderDate) + '  |  ' + (o.CN || 'no CN')));
+        const rt = el('div'); rt.style.textAlign = 'right'; rt.append(el('b', money(o.Total)), el('small', o.Status));
+        r.append(l, rt); hist.appendChild(r);
+      });
+    } catch (e) { hist.textContent = e.message; }
+  }
+
+  /* ---------- Add / edit ---------- */
+  function openForm(c) {
+    editingId = c ? c.CustomerID : null;
+    $('ctitle').textContent = c ? 'Edit customer' : 'Add customer';
+    $('cname').value = c ? c.Name : '';   $('cphone').value = c ? c.Phone : '';
+    $('ccity').value = c ? c.City : '';   $('caddr').value = c ? c.Address : '';
+    $('cemail').value = c ? c.Email : ''; $('ctags').value = c ? c.Tags : '';
+    $('cnotes').value = c ? c.Notes : '';
+    $('cform').classList.remove('hide'); $('cform').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('addC').onclick = () => openForm(null);
+  $('cancelC').onclick = () => $('cform').classList.add('hide');
+  $('saveC').onclick = async () => {
+    $('saveC').disabled = true;
+    try {
+      await api('saveCustomer', {
+        customerId: editingId, name: $('cname').value, phone: $('cphone').value, city: $('ccity').value,
+        address: $('caddr').value, email: $('cemail').value, tags: $('ctags').value, notes: $('cnotes').value
+      });
+      toast('Customer saved.'); $('cform').classList.add('hide'); $('detail').classList.add('hide'); await load();
+    } catch (e) { toast(e.message); }
+    $('saveC').disabled = false;
+  };
+
+  /* ---------- Excel export (respects the current search) ---------- */
+  $('exp').onclick = async () => {
+    if (typeof XLSX === 'undefined') { toast('Excel library did not load. Check your internet.'); return; }
+    if (!filtered.length) { toast('Nothing to export.'); return; }
+    try { await api('logExport', { what: 'customers', rows: filtered.length }); } catch (e) { toast(e.message); return; }
+    const rows = filtered.map(c => ({
+      Name: c.Name, Mobile: c.Phone, City: c.City, Address: c.Address, Email: c.Email, Tags: c.Tags, Notes: c.Notes,
+      Orders: c.stats.orders, Delivered: c.stats.delivered, Returned: c.stats.returned,
+      'Total spent': Math.round(c.stats.spent), 'Last order': c.stats.lastTs ? day(c.stats.lastTs) : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+    XLSX.writeFile(wb, 'customers-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  };
+
+  load();
+</script>
+</body>
+</html>
