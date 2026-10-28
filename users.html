@@ -17,7 +17,7 @@
   .row small { display: block; color: var(--muted); }
   .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
   .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
-  input[type=checkbox] { width: auto; }
+  input[type=checkbox], input[type=radio] { width: auto; }
   .hide { display: none; }
   .sp { margin-top: 16px; }
   .btns { display: flex; gap: 10px; }
@@ -42,7 +42,8 @@
     <h2 id="utitle">Add user</h2>
     <label>Username (lowercase, no spaces)</label><input id="uname" type="text" autocapitalize="none" autocomplete="off">
     <label>Full name</label><input id="fname" type="text" autocomplete="off">
-    <label>Role</label><select id="urole"></select>
+    <label>Role (pick one)</label>
+    <div class="checks" id="urole"></div>
     <label>Store access</label>
     <div class="checks" id="stores"></div>
     <div class="checks">
@@ -139,9 +140,11 @@
     $('pwlabel').textContent = u ? 'New password (leave empty to keep the current one)' : 'Password (min 8 characters)';
 
     const sel = $('urole'); sel.textContent = '';
-    const ph = el('option', 'Select a role...'); ph.value = ''; sel.appendChild(ph);
-    roles.forEach(r => { const o = el('option', r.RoleName); o.value = r.RoleName; sel.appendChild(o); });
-    sel.value = u ? u.Role : '';
+    roles.forEach(r => {
+      const l = el('label'); const i = el('input');
+      i.type = 'radio'; i.name = 'role'; i.value = r.RoleName; i.checked = !!u && u.Role === r.RoleName;
+      l.append(i, document.createTextNode(' ' + r.RoleName)); sel.appendChild(l);
+    });
 
     const acc = u ? String(u.StoreAccess || 'all') : 'all';
     const list = acc === 'all' ? [] : acc.split(',').map(x => x.trim());
@@ -154,7 +157,8 @@
   $('addU').onclick = () => openUser(null);
   $('cancelU').onclick = () => $('uform').classList.add('hide');
   $('saveU').onclick = async () => {
-    if (!$('urole').value) { toast('Please pick a role.'); return; }
+    const roleEl = document.querySelector('#urole input:checked');
+    if (!roleEl) { toast('Please pick a role.'); return; }
     const all = $('allst').checked;
     const sel = [...document.querySelectorAll('#stores input[data-s]:checked')].map(x => x.value);
     if (!all && !sel.length) { toast('Pick at least one store, or All stores.'); return; }
@@ -162,7 +166,7 @@
     try {
       await api('saveUser', {
         userId: editingId, username: $('uname').value, fullName: $('fname').value,
-        role: $('urole').value, storeAccess: all ? 'all' : sel.join(','),
+        role: roleEl.value, storeAccess: all ? 'all' : sel.join(','),
         hideCost: $('hidec').checked, active: $('act').checked, password: $('upw').value
       });
       toast('User saved.'); $('uform').classList.add('hide'); await load();
