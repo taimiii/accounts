@@ -14,7 +14,14 @@
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
          padding: 10px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
-  .row small { display: block; color: var(--muted); }
+  .row small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+  .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+  @media (max-width: 520px) {
+    .row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .acts { justify-content: stretch; }
+    .acts button { flex: 1; }
+  }
   .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
   .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
   input[type=checkbox], input[type=radio] { width: auto; }
@@ -133,7 +140,7 @@
       const t = el('button', isActive ? 'Deactivate' : 'Activate', 'ghost');
       if (u.UserID === Store.user.userId) { t.disabled = true; t.title = 'You cannot deactivate yourself'; }
       t.onclick = () => toggleUser(u, !isActive);
-      const right = el('div'); right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end';
+      const right = el('div', undefined, 'acts');
       right.append(b, t);
       row.append(left, right); box.appendChild(row);
     });
@@ -205,7 +212,7 @@
       const row = el('div', undefined, 'row');
       const left = el('div'); left.append(el('b', r.RoleName), el('small', r.Permissions || '(no permissions)'));
       row.appendChild(left);
-      if (r.RoleName !== 'Owner') { const b = el('button', 'Edit', 'ghost'); b.onclick = () => openRole(r); row.appendChild(b); }
+      if (r.RoleName !== 'Owner') { const b = el('button', 'Edit', 'ghost'); b.onclick = () => openRole(r); const a = el('div', undefined, 'acts'); a.appendChild(b); row.appendChild(a); }
       box.appendChild(row);
     });
   }
