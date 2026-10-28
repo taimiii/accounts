@@ -9,6 +9,8 @@
 <style>
   select { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line);
            border-radius: 8px; background: var(--bg); color: var(--text); }
+  select, option { color-scheme: light dark; }
+  option { background: var(--card); color: var(--text); }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
          padding: 10px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
@@ -137,8 +139,9 @@
     $('pwlabel').textContent = u ? 'New password (leave empty to keep the current one)' : 'Password (min 8 characters)';
 
     const sel = $('urole'); sel.textContent = '';
+    const ph = el('option', 'Select a role...'); ph.value = ''; sel.appendChild(ph);
     roles.forEach(r => { const o = el('option', r.RoleName); o.value = r.RoleName; sel.appendChild(o); });
-    if (u) sel.value = u.Role;
+    sel.value = u ? u.Role : '';
 
     const acc = u ? String(u.StoreAccess || 'all') : 'all';
     const list = acc === 'all' ? [] : acc.split(',').map(x => x.trim());
@@ -151,6 +154,7 @@
   $('addU').onclick = () => openUser(null);
   $('cancelU').onclick = () => $('uform').classList.add('hide');
   $('saveU').onclick = async () => {
+    if (!$('urole').value) { toast('Please pick a role.'); return; }
     const all = $('allst').checked;
     const sel = [...document.querySelectorAll('#stores input[data-s]:checked')].map(x => x.value);
     if (!all && !sel.length) { toast('Pick at least one store, or All stores.'); return; }
