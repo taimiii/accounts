@@ -18,6 +18,10 @@
   .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
   .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
   input[type=checkbox], input[type=radio] { width: auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { width: auto; margin: 0; padding: 9px 16px; border: 1px solid var(--line); background: var(--bg);
+          color: var(--text); border-radius: 99px; font-weight: 500; font-size: .92rem; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
   .hide { display: none; }
   .sp { margin-top: 16px; }
   .btns { display: flex; gap: 10px; }
@@ -43,7 +47,7 @@
     <label>Username (lowercase, no spaces)</label><input id="uname" type="text" autocapitalize="none" autocomplete="off">
     <label>Full name</label><input id="fname" type="text" autocomplete="off">
     <label>Role (pick one)</label>
-    <div class="checks" id="urole"></div>
+    <div class="chips" id="urole"></div>
     <label>Store access</label>
     <div class="checks" id="stores"></div>
     <div class="checks">
@@ -89,7 +93,7 @@
     payments: 'Courier and vendor payments', expenses: 'Expenses',
     reports: 'Reports and P&L', export: 'Export to Excel', users: 'Manage users and roles'
   };
-  let users = [], roles = [], allPerms = [], stores = [], editingId = null, editingRole = null;
+  let users = [], roles = [], allPerms = [], stores = [], editingId = null, editingRole = null, pickedRole = '';
 
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.style.display = 'block';
@@ -124,8 +128,14 @@
       const left = el('div');
       const name = el('b', u.FullName); name.append(el('span', String(u.Active).toUpperCase() === 'TRUE' ? 'Active' : 'Disabled', 'tag'));
       left.append(name, el('small', u.Username + '  |  ' + u.Role + '  |  stores: ' + (u.StoreAccess || 'all')));
+      const isActive = String(u.Active).toUpperCase() === 'TRUE';
       const b = el('button', 'Edit', 'ghost'); b.onclick = () => openUser(u);
-      row.append(left, b); box.appendChild(row);
+      const t = el('button', isActive ? 'Deactivate' : 'Activate', 'ghost');
+      if (u.UserID === Store.user.userId) { t.disabled = true; t.title = 'You cannot deactivate yourself'; }
+      t.onclick = () => toggleUser(u, !isActive);
+      const right = el('div'); right.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end';
+      right.append(b, t);
+      row.append(left, right); box.appendChild(row);
     });
   }
 
@@ -140,10 +150,13 @@
     $('pwlabel').textContent = u ? 'New password (leave empty to keep the current one)' : 'Password (min 8 characters)';
 
     const sel = $('urole'); sel.textContent = '';
+    pickedRole = u ? u.Role : '';
+    if (!roles.length) sel.textContent = 'No roles found. Add a role first.';
     roles.forEach(r => {
-      const l = el('label'); const i = el('input');
-      i.type = 'radio'; i.name = 'role'; i.value = r.RoleName; i.checked = !!u && u.Role === r.RoleName;
-      l.append(i, document.createTextNode(' ' + r.RoleName)); sel.appendChild(l);
+      const b = el('button', r.RoleName, 'chip' + (r.RoleName === pickedRole ? ' on' : ''));
+      b.type = 'button';
+      b.onclick = () => { pickedRole = r.RoleName; [...sel.children].forEach(c => c.classList.toggle('on', c === b)); };
+      sel.appendChild(b);
     });
 
     const acc = u ? String(u.StoreAccess || 'all') : 'all';
@@ -154,11 +167,22 @@
     $('uform').classList.remove('hide'); $('uform').scrollIntoView({ behavior: 'smooth' });
   }
 
+  async function toggleUser(u, makeActive) {
+    if (!confirm((makeActive ? 'Activate ' : 'Deactivate ') + u.FullName + '?')) return;
+    try {
+      await api('saveUser', {
+        userId: u.UserID, username: u.Username, fullName: u.FullName, role: u.Role,
+        storeAccess: u.StoreAccess || 'all', hideCost: String(u.HideCostProfit).toUpperCase() === 'TRUE',
+        active: makeActive
+      });
+      toast(u.FullName + (makeActive ? ' activated.' : ' deactivated.')); await load();
+    } catch (e) { toast(e.message); }
+  }
+
   $('addU').onclick = () => openUser(null);
   $('cancelU').onclick = () => $('uform').classList.add('hide');
   $('saveU').onclick = async () => {
-    const roleEl = document.querySelector('#urole input:checked');
-    if (!roleEl) { toast('Please pick a role.'); return; }
+    if (!pickedRole) { toast('Please pick a role.'); return; }
     const all = $('allst').checked;
     const sel = [...document.querySelectorAll('#stores input[data-s]:checked')].map(x => x.value);
     if (!all && !sel.length) { toast('Pick at least one store, or All stores.'); return; }
@@ -166,7 +190,7 @@
     try {
       await api('saveUser', {
         userId: editingId, username: $('uname').value, fullName: $('fname').value,
-        role: roleEl.value, storeAccess: all ? 'all' : sel.join(','),
+        role: pickedRole, storeAccess: all ? 'all' : sel.join(','),
         hideCost: $('hidec').checked, active: $('act').checked, password: $('upw').value
       });
       toast('User saved.'); $('uform').classList.add('hide'); await load();
