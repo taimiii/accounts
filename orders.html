@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Orders</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { width: auto; margin: 0; padding: 7px 13px; border: 1px solid var(--line); background: var(--card);
+          color: var(--text); border-radius: 99px; font-weight: 500; font-size: .85rem; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+         padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row small { display: block; color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .tag.Yellow { color: #d97706; border-color: #d97706; } .tag.Red { color: var(--err); border-color: var(--err); }
+  .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
+  input[type=checkbox] { width: auto; }
+  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line);
+                     border-radius: 8px; background: var(--bg); color: var(--text); }
+  .hide { display: none; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button { margin-top: 12px; flex: 1 1 140px; }
+  @media (max-width: 520px) {
+    .row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .acts { justify-content: stretch; } .acts button { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Orders</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card">
+    <div class="chips" id="chips"></div>
+    <input id="q" type="text" placeholder="Search invoice, customer, phone or CN" autocomplete="off">
+    <div class="btns"><button id="newBtn" onclick="location.href='neworder.html'">New order</button></div>
+  </div>
+
+  <div class="card hide sp" id="apanel"></div>
+
+  <div class="card sp"><div id="list">Loading...</div></div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('orders')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const STATUSES = ['All', 'Invoiced', 'Dispatched', 'Delivered', 'Returned', 'Refused', 'Cancelled'];
+  const NEXT = { Invoiced: ['Dispatched', 'Cancelled'], Dispatched: ['Delivered', 'Returned', 'Refused'], Delivered: ['Returned'] };
+  let status = 'All', rows = [], lists = null, timer = null;
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const money = v => 'Rs ' + Math.round(Number(v || 0)).toLocaleString('en-PK');
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
+
+  function drawChips() {
+    const box = $('chips'); box.textContent = '';
+    STATUSES.forEach(s => { const b = el('button', s, 'chip' + (s === status ? ' on' : '')); b.onclick = () => { status = s; drawChips(); load(); }; box.appendChild(b); });
+  }
+
+  async function load() {
+    $('err').textContent = '';
+    try {
+      if (!lists) lists = await api('getLists');
+      rows = await api('listOrders', { status: status === 'All' ? '' : status, q: $('q').value.trim() });
+      render();
+    } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
+  }
+  $('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 450); });
+
+  const courierName = id => { const c = (lists.couriers || []).find(x => x.CourierID === id); return c ? c.CourierName : ''; };
+  const storeName = id => { const s = (lists.stores || []).find(x => x.StoreID === id); return s ? s.StoreName : id; };
+
+  function render() {
+    $('sub').textContent = rows.length + ' shown' + (rows.length === 200 ? ' (latest 200)' : '');
+    const box = $('list'); box.textContent = '';
+    if (!rows.length) { box.textContent = 'No orders found.'; return; }
+    rows.forEach(o => {
+      const row = el('div', undefined, 'row'), left = el('div');
+      const t = el('b', o.InvoiceNo); t.append(el('span', o.Status, 'tag'));
+      if (o.Risk && o.Risk !== 'Green') t.append(el('span', o.Risk + ' risk', 'tag ' + o.Risk));
+      left.append(t,
+        el('small', day(o.OrderDate) + '  |  ' + storeName(o.StoreID)),
+        el('small', (o.Customer || '-') + '  |  ' + (o.Phone || '')),
+        el('small', o.Items || ''),
+        el('small', 'COD ' + money(o.COD) + (o.CN ? '  |  CN ' + o.CN : '') + (o.CourierID ? '  |  ' + courierName(o.CourierID) : '')));
+      const acts = el('div', undefined, 'acts');
+      (NEXT[o.Status] || []).forEach(to => { const b = el('button', to === 'Dispatched' ? 'Dispatch' : to, 'ghost'); b.onclick = () => openAction(o, to); acts.appendChild(b); });
+      row.append(left, acts); box.appendChild(row);
+    });
+  }
+
+  /* ---------- Status actions ---------- */
+  function openAction(o, to) {
+    const p = $('apanel'); p.textContent = ''; p.classList.remove('hide');
+    p.append(el('h2', to + ': ' + o.InvoiceNo), el('p', o.Customer + '  |  COD ' + money(o.COD), 'muted'));
+    let courier = o.CourierID || '', dateEl = null, cnEl = null;
+
+    if (to === 'Dispatched') {
+      p.append(el('label', 'Courier *'));
+      const box = el('div', undefined, 'checks'); p.appendChild(box);
+      (lists.couriers || []).forEach(c => {
+        const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = c.CourierID === courier;
+        i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); courier = i.checked ? c.CourierID : ''; };
+        l.append(i, document.createTextNode(' ' + c.CourierName)); box.appendChild(l);
+      });
+      p.append(el('label', 'CN / tracking number'));
+      cnEl = el('input'); cnEl.type = 'text'; cnEl.value = o.CN || ''; cnEl.autocomplete = 'off'; p.appendChild(cnEl);
+    }
+    if (to === 'Delivered') {
+      p.append(el('label', 'Delivery date (the date the courier delivered it)'));
+      dateEl = el('input'); dateEl.type = 'date'; dateEl.value = new Date().toISOString().slice(0, 10); p.appendChild(dateEl);
+    }
+    if (to === 'Returned' || to === 'Refused' || to === 'Cancelled')
+      p.append(el('p', 'This order will never count as revenue. Stock and courier return charges are handled in the later steps.', 'muted'));
+
+    const btns = el('div', undefined, 'btns');
+    const ok = el('button', 'Confirm ' + to), no = el('button', 'Close', 'ghost');
+    no.onclick = () => p.classList.add('hide');
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        await api('setOrderStatus', { orderId: o.OrderID, status: to, courierId: courier, cn: cnEl ? cnEl.value : undefined, date: dateEl ? dateEl.value : undefined });
+        toast(o.InvoiceNo + ' is now ' + to + '.'); p.classList.add('hide'); await load();
+      } catch (e) { toast(e.message); ok.disabled = false; }
+    };
+    btns.append(ok, no); p.appendChild(btns); p.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  drawChips(); load();
+</script>
+</body>
+</html>

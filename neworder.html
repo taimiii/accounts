@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>New order</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
+  input[type=checkbox] { width: auto; }
+  .hide { display: none; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button { margin-top: 12px; flex: 1 1 140px; }
+  .pick { display: block; width: 100%; text-align: left; margin: 6px 0 0; padding: 10px; background: var(--bg);
+          color: var(--text); border: 1px solid var(--line); font-weight: 500; font-size: .92rem; }
+  .line { border-top: 1px solid var(--line); padding: 10px 0; }
+  .line .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .line .nums { display: flex; gap: 8px; margin-top: 6px; }
+  .line .nums div { flex: 1; }
+  .line label { margin-top: 0; }
+  .tot { display: flex; justify-content: space-between; padding: 4px 0; }
+  .tot.big { font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
+  .risk { border-left: 5px solid var(--line); padding: 10px 12px; border-radius: 8px; background: var(--bg); margin-top: 12px; }
+  .risk.green { border-color: #15803d; } .risk.yellow { border-color: #d97706; } .risk.red { border-color: #b91c1c; }
+  .risk b.green { color: #15803d; } .risk b.yellow { color: #d97706; } .risk b.red { color: #b91c1c; }
+  .risk ul { margin: 6px 0 0; padding-left: 18px; }
+  small.info { display: block; margin-top: 6px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>New order</b><small id="sub">Loading...</small></div>
+  <button class="ghost" onclick="location.href='orders.html'">Orders</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+
+  <div class="card hide" id="done">
+    <h2 id="doneTitle"></h2>
+    <p id="doneText" class="muted"></p>
+    <div class="btns">
+      <button onclick="location.reload()">New order</button>
+      <button class="ghost" onclick="location.href='orders.html'">View orders</button>
+    </div>
+  </div>
+
+  <div id="formWrap">
+    <div class="card">
+      <h2>1. Store</h2>
+      <div class="checks" id="stores"></div>
+    </div>
+
+    <div class="card sp">
+      <h2>2. Customer</h2>
+      <label>Mobile number *</label>
+      <input id="phone" type="text" inputmode="tel" autocomplete="off" placeholder="03001234567">
+      <small class="info" id="custInfo"></small>
+      <label>Name *</label><input id="cname" type="text" autocomplete="off">
+      <label>City</label><input id="ccity" type="text" autocomplete="off">
+      <label>Delivery address *</label><input id="caddr" type="text" autocomplete="off">
+      <div class="risk hide" id="risk"></div>
+    </div>
+
+    <div class="card sp">
+      <h2>3. Products</h2>
+      <input id="psearch" type="text" placeholder="Search product to add" autocomplete="off">
+      <div id="presults"></div>
+      <div id="lines"></div>
+    </div>
+
+    <div class="card sp">
+      <h2>4. Payment and delivery</h2>
+      <label>Discount (Rs)</label><input id="disc" type="text" inputmode="decimal" value="0">
+      <label>Delivery charge from customer (Rs)</label><input id="deliv" type="text" inputmode="decimal" value="0">
+      <label>Advance already received (Rs)</label><input id="adv" type="text" inputmode="decimal" value="0">
+      <label>Courier charge, your cost (Rs, optional)</label><input id="ccost" type="text" inputmode="decimal">
+      <label>Courier (optional, can be set at dispatch)</label><div class="checks" id="couriers"></div>
+      <label>CN / tracking number (optional)</label><input id="cn" type="text" autocomplete="off">
+      <label>Order source</label><div class="checks" id="sources"></div>
+      <div id="totals" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card sp">
+      <h2>5. Invoice</h2>
+      <label>Invoice style</label><div class="checks" id="styles"></div>
+      <label>Note on invoice (optional)</label><input id="note" type="text" autocomplete="off">
+      <div id="reasonBox" class="hide">
+        <label>HIGH RISK: reason to continue anyway *</label><input id="reason" type="text" autocomplete="off">
+      </div>
+      <div class="btns"><button id="save" disabled>Create order</button></div>
+    </div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('orders')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let L = null, storeId = '', courierId = '', sourceId = '', style = '', items = [], riskLevel = 'Green', riskTimer = null, lastPhone = '';
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+  const money = v => 'Rs ' + Math.round(v).toLocaleString('en-PK');
+
+  // One-choice tick list. get/set the chosen id through callbacks.
+  function tickList(box, opts, current, onPick) {
+    box.textContent = '';
+    if (!opts.length) { box.textContent = 'Nothing available yet.'; return; }
+    opts.forEach(o => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = o.id === current;
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); onPick(i.checked ? o.id : ''); };
+      l.append(i, document.createTextNode(' ' + o.label)); box.appendChild(l);
+    });
+  }
+
+  async function init() {
+    try { L = await api('getLists'); } catch (e) { $('err').textContent = e.message; return; }
+    $('sub').textContent = 'Fill the form and save';
+    if (L.stores.length === 1) storeId = L.stores[0].StoreID;
+    drawStores();
+    tickList($('couriers'), L.couriers.map(c => ({ id: c.CourierID, label: c.CourierName })), '', v => courierId = v);
+    tickList($('sources'), L.sources.map(c => ({ id: c.SourceID, label: c.SourceName })), '', v => sourceId = v);
+    drawStyles(); $('save').disabled = false; totals();
+  }
+
+  function drawStores() {
+    tickList($('stores'), L.stores.map(s => ({ id: s.StoreID, label: s.StoreName })), storeId, v => {
+      if (v !== storeId && items.length) { items = []; drawLines(); toast('Products cleared because the store changed.'); }
+      storeId = v; drawStyles(); $('presults').textContent = ''; scheduleRisk();
+    });
+  }
+  function drawStyles() {
+    const st = L.stores.find(s => s.StoreID === storeId);
+    if (!style && st) style = st.DefaultInvoiceStyle || '';
+    tickList($('styles'), L.invoiceStyles.map(s => ({ id: s.StyleName, label: s.StyleName })), style, v => style = v);
+  }
+
+  /* ---------- Customer lookup ---------- */
+  async function lookup() {
+    const p = $('phone').value.trim(); if (p === lastPhone || p.replace(/\D/g, '').length < 10) return; lastPhone = p;
+    $('custInfo').textContent = 'Checking...';
+    try {
+      const r = await api('getCustomerByPhone', { phone: p });
+      if (!r.valid) { $('custInfo').textContent = 'This does not look like a valid mobile number.'; }
+      else if (r.customer) {
+        const c = r.customer;
+        $('cname').value = c.Name || ''; $('ccity').value = c.City || ''; $('caddr').value = c.Address || '';
+        $('custInfo').textContent = 'Existing customer: ' + r.stats.orders + ' orders, ' + r.stats.returned + ' returned. Details filled in; edit if the address changed.';
+      } else { $('custInfo').textContent = 'New customer. Enter name and address; the customer is saved with the order.'; }
+    } catch (e) { $('custInfo').textContent = e.message; }
+    scheduleRisk();
+  }
+  $('phone').addEventListener('blur', lookup);
+  $('phone').addEventListener('change', lookup);
+  $('caddr').addEventListener('blur', () => scheduleRisk());
+
+  /* ---------- Risk banner ---------- */
+  function scheduleRisk() { clearTimeout(riskTimer); riskTimer = setTimeout(runRisk, 500); }
+  async function runRisk() {
+    const phone = $('phone').value.trim(); if (phone.replace(/\D/g, '').length < 10) return;
+    try {
+      const r = await api('getRisk', { phone: phone, address: $('caddr').value, productIds: items.map(i => i.productId) });
+      riskLevel = r.level;
+      const box = $('risk'); box.className = 'risk ' + r.level.toLowerCase(); box.textContent = '';
+      const t = { Green: 'OK to proceed', Yellow: 'Verify before dispatch', Red: 'HIGH RISK' }[r.level];
+      box.appendChild(el('b', t, r.level.toLowerCase()));
+      if (r.reasons.length) { const ul = el('ul'); r.reasons.forEach(x => ul.appendChild(el('li', x))); box.appendChild(ul); }
+      $('reasonBox').classList.toggle('hide', r.level !== 'Red');
+    } catch (e) { /* the server checks again when saving */ }
+  }
+
+  /* ---------- Products ---------- */
+  $('psearch').addEventListener('input', () => {
+    const q = $('psearch').value.trim().toLowerCase(), box = $('presults'); box.textContent = '';
+    if (!storeId) { box.textContent = 'Pick a store first.'; return; }
+    if (!q) return;
+    L.products.filter(p => p.StoreID === storeId && p.ProductName.toLowerCase().indexOf(q) > -1).slice(0, 8).forEach(p => {
+      const b = el('button', p.ProductName + '  -  ' + money(n(p.SellingPrice)), 'pick');
+      b.onclick = () => { addItem(p); $('psearch').value = ''; box.textContent = ''; };
+      box.appendChild(b);
+    });
+    if (!box.children.length) box.textContent = 'No product found in this store.';
+  });
+  function addItem(p) {
+    const ex = items.find(i => i.productId === p.ProductID);
+    if (ex) ex.qty++; else items.push({ productId: p.ProductID, name: p.ProductName, qty: 1, price: n(p.SellingPrice) });
+    drawLines(); scheduleRisk();
+  }
+  function drawLines() {
+    const box = $('lines'); box.textContent = '';
+    items.forEach((it, idx) => {
+      const d = el('div', undefined, 'line'), top = el('div', undefined, 'top');
+      const rm = el('button', 'Remove', 'ghost'); rm.onclick = () => { items.splice(idx, 1); drawLines(); scheduleRisk(); };
+      top.append(el('b', it.name), rm);
+      const nums = el('div', undefined, 'nums');
+      const mk = (label, val, set) => {
+        const w = el('div'); w.appendChild(el('label', label)); const i = el('input'); i.type = 'text'; i.inputMode = 'decimal'; i.value = val;
+        i.oninput = () => { set(n(i.value)); totals(); }; w.appendChild(i); return w;
+      };
+      nums.append(mk('Qty', it.qty, v => it.qty = Math.max(0, Math.floor(v))), mk('Price (Rs)', it.price, v => it.price = v));
+      d.append(top, nums); box.appendChild(d);
+    });
+    totals();
+  }
+
+  /* ---------- Totals ---------- */
+  function calc() {
+    const sub = items.reduce((a, i) => a + i.qty * i.price, 0), disc = n($('disc').value), dl = n($('deliv').value), adv = n($('adv').value);
+    return { sub: sub, disc: disc, dl: dl, adv: adv, total: sub - disc + dl, cod: sub - disc + dl - adv };
+  }
+  function totals() {
+    const c = calc(), box = $('totals'); box.textContent = '';
+    [['Subtotal', c.sub], ['Discount', -c.disc], ['Delivery', c.dl], ['Advance received', -c.adv]].forEach(r => {
+      const d = el('div', undefined, 'tot'); d.append(el('span', r[0]), el('span', money(r[1]))); box.appendChild(d);
+    });
+    const big = el('div', undefined, 'tot big'); big.append(el('span', 'Cash to collect (COD)'), el('span', money(c.cod))); box.appendChild(big);
+  }
+  ['disc', 'deliv', 'adv'].forEach(id => $(id).addEventListener('input', totals));
+
+  /* ---------- Save ---------- */
+  $('save').onclick = async () => {
+    if (!storeId) return toast('Pick a store.');
+    if (!items.length) return toast('Add at least one product.');
+    if (items.some(i => i.qty < 1)) return toast('Every product needs a quantity of 1 or more.');
+    $('save').disabled = true; $('save').textContent = 'Saving...';
+    try {
+      const r = await api('createOrder', {
+        storeId: storeId, phone: $('phone').value,
+        customer: { name: $('cname').value, city: $('ccity').value, address: $('caddr').value },
+        items: items.map(i => ({ productId: i.productId, qty: i.qty, unitPrice: i.price })),
+        discount: n($('disc').value), deliveryCharge: n($('deliv').value), advance: n($('adv').value),
+        courierCharge: $('ccost').value, courierId: courierId, cn: $('cn').value, sourceId: sourceId,
+        invoiceStyle: style, invoiceNote: $('note').value, overrideReason: $('reason').value
+      });
+      $('formWrap').classList.add('hide'); $('done').classList.remove('hide');
+      $('doneTitle').textContent = 'Order created: ' + r.invoiceNo;
+      $('doneText').textContent = 'Cash to collect: ' + money(r.cod) + '. Risk: ' + r.risk + '.';
+      window.scrollTo(0, 0);
+    } catch (e) { toast(e.message); $('save').disabled = false; $('save').textContent = 'Create order'; }
+  };
+
+  init();
+</script>
+</body>
+</html>
