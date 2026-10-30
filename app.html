@@ -6,17 +6,27 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Accounts</title>
 <link rel="stylesheet" href="style.css">
+<style>
+  .hide { display: none; }
+  .sp { margin-top: 16px; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 10px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  .hbtns { display: flex; gap: 8px; }
+  .cur { font-weight: 700; color: var(--brand); }
+  .tile.off { opacity: .55; }
+</style>
 </head>
 <body>
 <header>
   <div class="who"><b id="name"></b><small id="role"></small></div>
-  <button class="ghost" id="logout">Log out</button>
+  <div class="hbtns">
+    <button class="ghost" id="pwBtn">Change password</button>
+    <button class="ghost" id="logout">Log out</button>
+  </div>
 </header>
 
 <main class="wrap">
-  <div class="grid" id="menu"></div>
-
-  <div class="card" style="max-width:380px">
+  <div class="card hide" id="pwCard" style="max-width:380px">
     <h2>Change my password</h2>
     <label for="op">Current password</label>
     <input id="op" type="password" autocomplete="current-password">
@@ -25,6 +35,14 @@
     <button id="chg">Change password</button>
     <p id="pmsg" class="err"></p>
   </div>
+
+  <div class="card" id="storeCard">
+    <h2>Working store</h2>
+    <p class="muted" id="storeMsg">Loading your stores...</p>
+    <div class="checks" id="stores"></div>
+  </div>
+
+  <div class="grid sp" id="menu"></div>
 </main>
 <div id="toast"></div>
 
@@ -37,36 +55,75 @@
   $('name').textContent = user.fullName;
   $('role').textContent = user.role;
 
-  // Menu tiles. 'perms' = which permissions unlock the tile. 'step' = when it gets built.
+  // 'store: true' = the tile works inside the store chosen above
   const MENU = [
-    { t: 'Orders & Invoices', d: 'New order, status, invoice PDF', perms: ['orders'], page: 'orders.html' },
+    { t: 'Orders & Invoices', d: 'New order, status, invoice PDF', perms: ['orders'], page: 'orders.html', store: true },
     { t: 'Customers', d: 'Customer list and history', perms: ['customers', 'customers_view'], page: 'customers.html' },
-    { t: 'Purchases & Stock', d: 'Purchase invoices, batches', perms: ['purchases'], step: 6 },
-    { t: 'Courier Payments', d: 'Receivables, remittances', perms: ['payments'], step: 7 },
-    { t: 'Vendor Payments', d: 'Payables and ledger', perms: ['payments'], step: 8 },
-    { t: 'Expenses', d: 'Direct and indirect', perms: ['expenses'], step: 8 },
-    { t: 'Reports & P&L', d: 'Statements, profit and loss', perms: ['reports'], step: 9 },
+    { t: 'Purchases & Stock', d: 'Purchase invoices, batches', perms: ['purchases'], step: 6, store: true },
+    { t: 'Courier Payments', d: 'Receivables, remittances', perms: ['payments'], step: 7, store: true },
+    { t: 'Vendor Payments', d: 'Payables and ledger', perms: ['payments'], step: 8, store: true },
+    { t: 'Expenses', d: 'Direct and indirect', perms: ['expenses'], step: 8, store: true },
+    { t: 'Reports & P&L', d: 'Statements, profit and loss', perms: ['reports'], step: 9, store: true },
     { t: 'Setup Lists', d: 'Products, stores, vendors, couriers', perms: ['users'], page: 'setup.html' },
     { t: 'Users & Access', d: 'Add users, set permissions', perms: ['users'], page: 'users.html' }
   ];
 
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.style.display = 'block';
-    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 2500);
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 2800);
   }
 
-  const menu = $('menu');
-  MENU.filter(m => m.perms.some(can)).forEach(m => {
-    const b = document.createElement('button');
-    b.className = 'tile';
-    b.style.width = 'auto'; b.style.marginTop = '0'; b.style.color = 'inherit';
-    const t = document.createElement('b'); t.textContent = m.t;
-    const d = document.createElement('span'); d.textContent = m.d;
-    b.append(t, d);
-    b.onclick = () => { if (m.page) location.href = m.page; else toast('Coming in Step ' + m.step); };
-    menu.appendChild(b);
-  });
-  if (!menu.children.length) menu.textContent = 'No modules are enabled for your role yet.';
+  /* ---------- Menu tiles ---------- */
+  function drawMenu() {
+    const menu = $('menu'); menu.textContent = '';
+    MENU.filter(m => m.perms.some(can)).forEach(m => {
+      const b = document.createElement('button');
+      b.className = 'tile' + (m.store && !Store.storeId ? ' off' : '');
+      b.style.width = 'auto'; b.style.marginTop = '0'; b.style.color = 'inherit';
+      const t = document.createElement('b'); t.textContent = m.t;
+      const d = document.createElement('span'); d.textContent = m.d;
+      b.append(t, d);
+      b.onclick = () => {
+        if (m.store && !Store.storeId) { toast('Select your working store first.'); $('storeCard').scrollIntoView({ behavior: 'smooth' }); return; }
+        if (m.page) location.href = m.page; else toast('Coming in Step ' + m.step);
+      };
+      menu.appendChild(b);
+    });
+    if (!menu.children.length) menu.textContent = 'No modules are enabled for your role yet.';
+  }
+
+  /* ---------- Working store (one at a time, so stores never mix) ---------- */
+  function drawStores(stores) {
+    const box = $('stores'); box.textContent = '';
+    if (!stores.length) { $('storeMsg').textContent = 'No store is available for your account.'; return; }
+    $('storeMsg').textContent = Store.storeId ? 'You are working in: ' : 'Select the store you want to work in.';
+    if (Store.storeId) { const c = document.createElement('span'); c.className = 'cur'; c.textContent = Store.storeName; $('storeMsg').appendChild(c); }
+    stores.forEach(s => {
+      const l = document.createElement('label'), i = document.createElement('input');
+      i.type = 'checkbox'; i.checked = s.StoreID === Store.storeId;
+      i.onchange = () => {
+        box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; });
+        Store.setStore(i.checked ? s.StoreID : '', i.checked ? s.StoreName : '');
+        drawStores(stores); drawMenu();
+        if (i.checked) toast('Working store: ' + s.StoreName);
+      };
+      l.append(i, document.createTextNode(' ' + s.StoreName)); box.appendChild(l);
+    });
+  }
+
+  async function loadStores() {
+    try {
+      const L = await api('getLists');
+      const stores = L.stores || [];
+      // Only one store available: choose it automatically. A saved choice that is no longer valid is dropped.
+      if (Store.storeId && !stores.some(s => s.StoreID === Store.storeId)) Store.setStore('', '');
+      if (!Store.storeId && stores.length === 1) Store.setStore(stores[0].StoreID, stores[0].StoreName);
+      drawStores(stores); drawMenu();
+    } catch (e) { $('storeMsg').textContent = e.message; }
+  }
+
+  /* ---------- Header buttons ---------- */
+  $('pwBtn').onclick = () => { $('pwCard').classList.toggle('hide'); if (!$('pwCard').classList.contains('hide')) $('pwCard').scrollIntoView({ behavior: 'smooth' }); };
 
   $('logout').onclick = async () => {
     try { await api('logout'); } catch (e) {}
@@ -80,9 +137,12 @@
       await api('changePassword', { oldPassword: $('op').value, newPassword: $('np').value });
       m.className = 'good'; m.textContent = 'Password changed.';
       $('op').value = ''; $('np').value = '';
+      setTimeout(() => $('pwCard').classList.add('hide'), 1800);
     } catch (e) { m.textContent = e.message; }
     $('chg').disabled = false;
   };
+
+  drawMenu(); loadStores();
 </script>
 </body>
 </html>

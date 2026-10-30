@@ -4,6 +4,10 @@ const Store = {
   get token() { return sessionStorage.getItem('token'); },
   get user() { try { return JSON.parse(sessionStorage.getItem('user')); } catch (e) { return null; } },
   save(token, user) { sessionStorage.setItem('token', token); sessionStorage.setItem('user', JSON.stringify(user)); },
+  // The store the user is working in (chosen on the dashboard)
+  get storeId() { return sessionStorage.getItem('storeId') || ''; },
+  get storeName() { return sessionStorage.getItem('storeName') || ''; },
+  setStore(id, name) { sessionStorage.setItem('storeId', id || ''); sessionStorage.setItem('storeName', name || ''); },
   clear() { sessionStorage.clear(); }
 };
 

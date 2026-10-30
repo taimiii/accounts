@@ -53,8 +53,10 @@
 </main>
 <div id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="config.js"></script>
 <script src="api.js"></script>
+<script src="invoice.js"></script>
 <script>
   if (!Store.token || !can('orders')) location.replace('app.html');
   const $ = id => document.getElementById(id);
@@ -74,9 +76,10 @@
 
   async function load() {
     $('err').textContent = '';
+    if (!Store.storeId) { $('list').textContent = 'Select your working store on the dashboard first.'; $('sub').textContent = ''; return; }
     try {
       if (!lists) lists = await api('getLists');
-      rows = await api('listOrders', { status: status === 'All' ? '' : status, q: $('q').value.trim() });
+      rows = await api('listOrders', { status: status === 'All' ? '' : status, q: $('q').value.trim(), storeId: Store.storeId });
       render();
     } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
   }
@@ -86,7 +89,7 @@
   const storeName = id => { const s = (lists.stores || []).find(x => x.StoreID === id); return s ? s.StoreName : id; };
 
   function render() {
-    $('sub').textContent = rows.length + ' shown' + (rows.length === 200 ? ' (latest 200)' : '');
+    $('sub').textContent = Store.storeName + '  |  ' + rows.length + ' shown' + (rows.length === 200 ? ' (latest 200)' : '');
     const box = $('list'); box.textContent = '';
     if (!rows.length) { box.textContent = 'No orders found.'; return; }
     rows.forEach(o => {
@@ -99,6 +102,13 @@
         el('small', o.Items || ''),
         el('small', 'COD ' + money(o.COD) + (o.CN ? '  |  CN ' + o.CN : '') + (o.CourierID ? '  |  ' + courierName(o.CourierID) : '')));
       const acts = el('div', undefined, 'acts');
+      const inv = el('button', 'Invoice', 'ghost');
+      inv.onclick = async () => {
+        inv.disabled = true;
+        try { Invoice.openDialog(await api('getInvoiceData', { orderId: o.OrderID })); } catch (e) { toast(e.message); }
+        inv.disabled = false;
+      };
+      acts.appendChild(inv);
       (NEXT[o.Status] || []).forEach(to => { const b = el('button', to === 'Dispatched' ? 'Dispatch' : to, 'ghost'); b.onclick = () => openAction(o, to); acts.appendChild(b); });
       row.append(left, acts); box.appendChild(row);
     });

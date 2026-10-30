@@ -7,243 +7,289 @@
 <title>New order</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
-  input[type=checkbox] { width: auto; }
+  select, input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line);
+                             border-radius: 8px; background: var(--bg); color: var(--text); }
+  option { background: var(--card); color: var(--text); }
+  input[readonly] { opacity: .8; }
   .hide { display: none; }
   .sp { margin-top: 16px; }
   .btns { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btns button { margin-top: 12px; flex: 1 1 140px; }
-  .pick { display: block; width: 100%; text-align: left; margin: 6px 0 0; padding: 10px; background: var(--bg);
-          color: var(--text); border: 1px solid var(--line); font-weight: 500; font-size: .92rem; }
-  .line { border-top: 1px solid var(--line); padding: 10px 0; }
-  .line .top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-  .line .nums { display: flex; gap: 8px; margin-top: 6px; }
-  .line .nums div { flex: 1; }
-  .line label { margin-top: 0; }
-  .tot { display: flex; justify-content: space-between; padding: 4px 0; }
-  .tot.big { font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
-  .risk { border-left: 5px solid var(--line); padding: 10px 12px; border-radius: 8px; background: var(--bg); margin-top: 12px; }
+  .btns button { margin-top: 14px; flex: 1 1 140px; }
+  .invtitle { text-align: center; font-size: 22pt; font-weight: 700; letter-spacing: 2px; margin-bottom: 14px; }
+  .h12 { font-size: 12pt; font-weight: 700; margin: 0 0 8px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .two input[type=text] { margin-bottom: 8px; }
+  .two label { margin-top: 6px; }
+  small.info { display: block; margin-top: 4px; color: var(--muted); }
+
+  .ihead, .irow { display: grid; grid-template-columns: 120px 1fr 70px 110px 120px 34px; gap: 8px; align-items: center; }
+  .ihead { font-weight: 700; font-size: .85rem; color: var(--muted); border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .irow { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .irow input[type=text] { padding: 9px; }
+  .cell { position: relative; }
+  .amt { text-align: right; font-weight: 600; }
+  .rm { width: 34px; margin: 0; padding: 6px 0; }
+  .sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--card);
+          border: 1px solid var(--line); border-radius: 8px; max-height: 220px; overflow: auto; }
+  .sugg button { display: block; width: 100%; margin: 0; padding: 10px; text-align: left; background: transparent;
+                 color: var(--text); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; font-weight: 500; font-size: .92rem; }
+  .addrow { margin-top: 10px; }
+
+  .totals { margin: 18px 0 0 auto; max-width: 300px; }
+  .trow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 3px 0; }
+  .trow input { width: 90px; padding: 6px 8px; text-align: right; }
+  .s10 { font-size: 10pt; } .s15 { font-size: 15pt; font-weight: 700; border-top: 2px solid var(--text); margin-top: 4px; padding-top: 6px; }
+
+  .risk { border-left: 5px solid var(--line); padding: 10px 12px; border-radius: 8px; background: var(--bg); margin-top: 8px; }
   .risk.green { border-color: #15803d; } .risk.yellow { border-color: #d97706; } .risk.red { border-color: #b91c1c; }
   .risk b.green { color: #15803d; } .risk b.yellow { color: #d97706; } .risk b.red { color: #b91c1c; }
   .risk ul { margin: 6px 0 0; padding-left: 18px; }
-  small.info { display: block; margin-top: 6px; color: var(--muted); }
+
+  @media (max-width: 700px) {
+    .two { grid-template-columns: 1fr; gap: 12px; }
+    .ihead { display: none; }
+    .irow { grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 10px; }
+    .cell::before { content: attr(data-l); display: block; font-size: .72rem; color: var(--muted); }
+    .cell.sku, .cell.desc, .cell.x { grid-column: 1 / -1; }
+    .rm { width: 100%; }
+    .totals { max-width: none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <div class="who"><b>New order</b><small id="sub">Loading...</small></div>
+  <div class="who"><b>New order</b><small id="sub"></small></div>
   <button class="ghost" onclick="location.href='orders.html'">Orders</button>
 </header>
 
 <main class="wrap">
   <p class="err" id="err"></p>
 
+  <div class="card hide" id="nostore">
+    <h2>Select a store first</h2>
+    <p class="muted">Orders are always created inside one store. Choose your working store on the dashboard.</p>
+    <div class="btns"><button onclick="location.href='app.html'">Go to dashboard</button></div>
+  </div>
+
   <div class="card hide" id="done">
     <h2 id="doneTitle"></h2>
     <p id="doneText" class="muted"></p>
     <div class="btns">
-      <button onclick="location.reload()">New order</button>
+      <button id="reopen">Print / Save PDF</button>
+      <button class="ghost" onclick="location.reload()">New order</button>
       <button class="ghost" onclick="location.href='orders.html'">View orders</button>
     </div>
   </div>
 
-  <div id="formWrap">
-    <div class="card">
-      <h2>1. Store</h2>
-      <div class="checks" id="stores"></div>
-    </div>
+  <div class="card hide" id="sheet">
+    <div class="invtitle">Invoice</div>
 
-    <div class="card sp">
-      <h2>2. Customer</h2>
-      <label>Mobile number *</label>
-      <input id="phone" type="text" inputmode="tel" autocomplete="off" placeholder="03001234567">
-      <small class="info" id="custInfo"></small>
-      <label>Name *</label><input id="cname" type="text" autocomplete="off">
-      <label>City</label><input id="ccity" type="text" autocomplete="off">
-      <label>Delivery address *</label><input id="caddr" type="text" autocomplete="off">
-      <div class="risk hide" id="risk"></div>
-    </div>
-
-    <div class="card sp">
-      <h2>3. Products</h2>
-      <input id="psearch" type="text" placeholder="Search product to add" autocomplete="off">
-      <div id="presults"></div>
-      <div id="lines"></div>
-    </div>
-
-    <div class="card sp">
-      <h2>4. Payment and delivery</h2>
-      <label>Discount (Rs)</label><input id="disc" type="text" inputmode="decimal" value="0">
-      <label>Delivery charge from customer (Rs)</label><input id="deliv" type="text" inputmode="decimal" value="0">
-      <label>Advance already received (Rs)</label><input id="adv" type="text" inputmode="decimal" value="0">
-      <label>Courier charge, your cost (Rs, optional)</label><input id="ccost" type="text" inputmode="decimal">
-      <label>Courier (optional, can be set at dispatch)</label><div class="checks" id="couriers"></div>
-      <label>CN / tracking number (optional)</label><input id="cn" type="text" autocomplete="off">
-      <label>Order source</label><div class="checks" id="sources"></div>
-      <div id="totals" style="margin-top:14px"></div>
-    </div>
-
-    <div class="card sp">
-      <h2>5. Invoice</h2>
-      <label>Invoice style</label><div class="checks" id="styles"></div>
-      <label>Note on invoice (optional)</label><input id="note" type="text" autocomplete="off">
-      <div id="reasonBox" class="hide">
-        <label>HIGH RISK: reason to continue anyway *</label><input id="reason" type="text" autocomplete="off">
+    <!-- Block 1 -->
+    <div class="two">
+      <div>
+        <div class="h12">Bill To</div>
+        <input id="cname" type="text" placeholder="Name" autocomplete="off">
+        <input id="a1" type="text" placeholder="Address line 1" autocomplete="off">
+        <input id="a2" type="text" placeholder="Address line 2" autocomplete="off">
+        <input id="ccity" type="text" placeholder="City" autocomplete="off">
+        <input id="cemail" type="text" placeholder="Email" inputmode="email" autocapitalize="none" autocomplete="off">
+        <input id="phone" type="text" placeholder="Phone No (03001234567)" inputmode="tel" autocomplete="off">
+        <small class="info" id="custInfo"></small>
+        <div class="risk hide" id="risk"></div>
       </div>
-      <div class="btns"><button id="save" disabled>Create order</button></div>
+      <div>
+        <label>Invoice No</label><input id="invno" type="text" readonly>
+        <label>Billing Date</label><input id="bdate" type="date">
+        <label>Billing Terms</label>
+        <select id="terms">
+          <option>Cash On Delivery</option><option>Advanced Cash</option><option>Zero Payment</option>
+        </select>
+        <div id="advBox"><label>Advance already received (Rs)</label><input id="adv" type="text" inputmode="decimal" value="0"></div>
+        <label>Courier (not printed on the invoice)</label>
+        <select id="courier"><option value="">Select courier (optional)</option></select>
+      </div>
     </div>
+
+    <!-- Block 2 -->
+    <div class="h12" style="margin-top:22px">Invoice Details</div>
+    <div class="ihead"><div>SKU</div><div>Description</div><div>Qty</div><div>Unit Price</div><div style="text-align:right">Amount</div><div></div></div>
+    <div id="rows"></div>
+    <button class="ghost addrow" id="addRow">+ Add item</button>
+
+    <!-- Block 3 -->
+    <div class="totals">
+      <div class="trow s10"><span>SUBTOTAL</span><span id="tsub">0</span></div>
+      <div class="trow s10"><span>DISCOUNT %</span><input id="dpct" type="text" inputmode="decimal" value="0"></div>
+      <div class="trow s10"><span>DISCOUNT</span><span id="tdisc">0</span></div>
+      <div class="trow s15"><span>TOTAL</span><span id="ttot">0</span></div>
+      <small class="info" id="collect"></small>
+    </div>
+
+    <label style="margin-top:18px">Note on invoice (optional)</label>
+    <input id="note" type="text" autocomplete="off">
+    <div id="reasonBox" class="hide">
+      <label>HIGH RISK: reason to continue anyway *</label><input id="reason" type="text" autocomplete="off">
+    </div>
+    <div class="btns"><button id="save" disabled>Create Order</button></div>
   </div>
 </main>
 <div id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="config.js"></script>
 <script src="api.js"></script>
+<script src="invoice.js"></script>
 <script>
   if (!Store.token || !can('orders')) location.replace('app.html');
   const $ = id => document.getElementById(id);
-  let L = null, storeId = '', courierId = '', sourceId = '', style = '', items = [], riskLevel = 'Green', riskTimer = null, lastPhone = '';
+  const sid = Store.storeId;
+  let L = null, P = [], rows = [], riskTimer = null, lastPhone = '', prevTerms = 'Cash On Delivery', lastData = null;
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
   const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
-  const money = v => 'Rs ' + Math.round(v).toLocaleString('en-PK');
-
-  // One-choice tick list. get/set the chosen id through callbacks.
-  function tickList(box, opts, current, onPick) {
-    box.textContent = '';
-    if (!opts.length) { box.textContent = 'Nothing available yet.'; return; }
-    opts.forEach(o => {
-      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = o.id === current;
-      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); onPick(i.checked ? o.id : ''); };
-      l.append(i, document.createTextNode(' ' + o.label)); box.appendChild(l);
-    });
-  }
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
 
   async function init() {
+    if (!sid) { $('nostore').classList.remove('hide'); return; }
+    $('sub').textContent = Store.storeName;
     try { L = await api('getLists'); } catch (e) { $('err').textContent = e.message; return; }
-    $('sub').textContent = 'Fill the form and save';
-    if (L.stores.length === 1) storeId = L.stores[0].StoreID;
-    drawStores();
-    tickList($('couriers'), L.couriers.map(c => ({ id: c.CourierID, label: c.CourierName })), '', v => courierId = v);
-    tickList($('sources'), L.sources.map(c => ({ id: c.SourceID, label: c.SourceName })), '', v => sourceId = v);
-    drawStyles(); $('save').disabled = false; totals();
+    if (!L.stores.some(s => s.StoreID === sid)) { Store.setStore('', ''); $('nostore').classList.remove('hide'); return; }
+    P = L.products.filter(p => p.StoreID === sid);
+    L.couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; $('courier').appendChild(o); });
+    $('bdate').value = new Date().toLocaleDateString('en-CA');
+    $('sheet').classList.remove('hide');
+    addRow(); totals();
+    try { $('invno').value = await api('getNextInvoiceNo', { storeId: sid }); } catch (e) { $('invno').value = 'Auto'; }
+    $('save').disabled = false;
   }
 
-  function drawStores() {
-    tickList($('stores'), L.stores.map(s => ({ id: s.StoreID, label: s.StoreName })), storeId, v => {
-      if (v !== storeId && items.length) { items = []; drawLines(); toast('Products cleared because the store changed.'); }
-      storeId = v; drawStyles(); $('presults').textContent = ''; scheduleRisk();
-    });
-  }
-  function drawStyles() {
-    const st = L.stores.find(s => s.StoreID === storeId);
-    if (!style && st) style = st.DefaultInvoiceStyle || '';
-    tickList($('styles'), L.invoiceStyles.map(s => ({ id: s.StyleName, label: s.StyleName })), style, v => style = v);
-  }
-
-  /* ---------- Customer lookup ---------- */
+  /* ---------- Customer lookup (fills only empty fields) ---------- */
   async function lookup() {
-    const p = $('phone').value.trim(); if (p === lastPhone || p.replace(/\D/g, '').length < 10) return; lastPhone = p;
+    const p = $('phone').value.trim();
+    if (p === lastPhone || p.replace(/\D/g, '').length < 10) return; lastPhone = p;
     $('custInfo').textContent = 'Checking...';
     try {
       const r = await api('getCustomerByPhone', { phone: p });
-      if (!r.valid) { $('custInfo').textContent = 'This does not look like a valid mobile number.'; }
+      if (!r.valid) $('custInfo').textContent = 'This does not look like a valid mobile number.';
       else if (r.customer) {
-        const c = r.customer;
-        $('cname').value = c.Name || ''; $('ccity').value = c.City || ''; $('caddr').value = c.Address || '';
-        $('custInfo').textContent = 'Existing customer: ' + r.stats.orders + ' orders, ' + r.stats.returned + ' returned. Details filled in; edit if the address changed.';
-      } else { $('custInfo').textContent = 'New customer. Enter name and address; the customer is saved with the order.'; }
+        const c = r.customer, lines = String(c.Address || '').split('\n');
+        if (!$('cname').value) $('cname').value = c.Name || '';
+        if (!$('a1').value) $('a1').value = lines[0] || '';
+        if (!$('a2').value) $('a2').value = lines.slice(1).join(', ');
+        if (!$('ccity').value) $('ccity').value = c.City || '';
+        if (!$('cemail').value) $('cemail').value = c.Email || '';
+        $('custInfo').textContent = 'Existing customer: ' + r.stats.orders + ' orders, ' + r.stats.returned + ' returned.';
+      } else $('custInfo').textContent = 'New customer. It is saved automatically with this order.';
     } catch (e) { $('custInfo').textContent = e.message; }
     scheduleRisk();
   }
   $('phone').addEventListener('blur', lookup);
   $('phone').addEventListener('change', lookup);
-  $('caddr').addEventListener('blur', () => scheduleRisk());
+  $('a1').addEventListener('blur', scheduleRisk); $('a2').addEventListener('blur', scheduleRisk);
 
-  /* ---------- Risk banner ---------- */
+  /* ---------- Duplicate / risky order banner ---------- */
   function scheduleRisk() { clearTimeout(riskTimer); riskTimer = setTimeout(runRisk, 500); }
   async function runRisk() {
     const phone = $('phone').value.trim(); if (phone.replace(/\D/g, '').length < 10) return;
     try {
-      const r = await api('getRisk', { phone: phone, address: $('caddr').value, productIds: items.map(i => i.productId) });
-      riskLevel = r.level;
+      const r = await api('getRisk', { phone: phone, address: $('a1').value + ' ' + $('a2').value, productIds: rows.map(x => x.pid).filter(Boolean) });
       const box = $('risk'); box.className = 'risk ' + r.level.toLowerCase(); box.textContent = '';
-      const t = { Green: 'OK to proceed', Yellow: 'Verify before dispatch', Red: 'HIGH RISK' }[r.level];
-      box.appendChild(el('b', t, r.level.toLowerCase()));
+      box.appendChild(el('b', { Green: 'OK to proceed', Yellow: 'Verify before dispatch', Red: 'HIGH RISK' }[r.level], r.level.toLowerCase()));
       if (r.reasons.length) { const ul = el('ul'); r.reasons.forEach(x => ul.appendChild(el('li', x))); box.appendChild(ul); }
       $('reasonBox').classList.toggle('hide', r.level !== 'Red');
     } catch (e) { /* the server checks again when saving */ }
   }
 
-  /* ---------- Products ---------- */
-  $('psearch').addEventListener('input', () => {
-    const q = $('psearch').value.trim().toLowerCase(), box = $('presults'); box.textContent = '';
-    if (!storeId) { box.textContent = 'Pick a store first.'; return; }
-    if (!q) return;
-    L.products.filter(p => p.StoreID === storeId && p.ProductName.toLowerCase().indexOf(q) > -1).slice(0, 8).forEach(p => {
-      const b = el('button', p.ProductName + '  -  ' + money(n(p.SellingPrice)), 'pick');
-      b.onclick = () => { addItem(p); $('psearch').value = ''; box.textContent = ''; };
-      box.appendChild(b);
-    });
-    if (!box.children.length) box.textContent = 'No product found in this store.';
-  });
-  function addItem(p) {
-    const ex = items.find(i => i.productId === p.ProductID);
-    if (ex) ex.qty++; else items.push({ productId: p.ProductID, name: p.ProductName, qty: 1, price: n(p.SellingPrice) });
-    drawLines(); scheduleRisk();
-  }
-  function drawLines() {
-    const box = $('lines'); box.textContent = '';
-    items.forEach((it, idx) => {
-      const d = el('div', undefined, 'line'), top = el('div', undefined, 'top');
-      const rm = el('button', 'Remove', 'ghost'); rm.onclick = () => { items.splice(idx, 1); drawLines(); scheduleRisk(); };
-      top.append(el('b', it.name), rm);
-      const nums = el('div', undefined, 'nums');
-      const mk = (label, val, set) => {
-        const w = el('div'); w.appendChild(el('label', label)); const i = el('input'); i.type = 'text'; i.inputMode = 'decimal'; i.value = val;
-        i.oninput = () => { set(n(i.value)); totals(); }; w.appendChild(i); return w;
-      };
-      nums.append(mk('Qty', it.qty, v => it.qty = Math.max(0, Math.floor(v))), mk('Price (Rs)', it.price, v => it.price = v));
-      d.append(top, nums); box.appendChild(d);
-    });
-    totals();
-  }
+  /* ---------- Invoice details rows ---------- */
+  function addRow() {
+    const r = { pid: '', sku: '', desc: '', qty: 1, price: 0 }; rows.push(r);
+    const d = el('div', undefined, 'irow'), cells = {};
+    const cell = (cls, label) => { const c = el('div', undefined, 'cell ' + cls); c.dataset.l = label; d.appendChild(c); return c; };
+    const inp = (parent, ph) => { const i = el('input'); i.type = 'text'; i.autocomplete = 'off'; if (ph) i.placeholder = ph; parent.appendChild(i); return i; };
 
-  /* ---------- Totals ---------- */
+    const cSku = cell('sku', 'SKU'), iSku = inp(cSku);
+    const cDesc = cell('desc', 'Description'), iDesc = inp(cDesc, 'Type product name'), sug = el('div', undefined, 'sugg hide'); cDesc.appendChild(sug);
+    const cQty = cell('qty', 'Qty'), iQty = inp(cQty); iQty.inputMode = 'numeric'; iQty.value = 1;
+    const cPrice = cell('price', 'Unit Price'), iPrice = inp(cPrice); iPrice.inputMode = 'decimal'; iPrice.value = 0;
+    const cAmt = cell('amt', 'Amount'), amt = el('div', '0', 'amt'); cAmt.appendChild(amt);
+    const cX = cell('x', ''), rm = el('button', 'x', 'ghost rm'); cX.appendChild(rm);
+
+    const refresh = () => { amt.textContent = money(r.qty * r.price); totals(); };
+    const pick = p => {
+      r.pid = p.ProductID; r.sku = p.SKU || ''; r.desc = p.ProductName; r.price = n(p.SellingPrice);
+      iSku.value = r.sku; iDesc.value = r.desc; iPrice.value = r.price; sug.classList.add('hide'); refresh(); scheduleRisk();
+    };
+    iSku.oninput = () => { const v = iSku.value.trim().toLowerCase(); const p = v && P.find(x => String(x.SKU || '').toLowerCase() === v); if (p) pick(p); else { r.pid = ''; r.sku = iSku.value; } };
+    iDesc.oninput = () => {
+      r.pid = ''; r.desc = iDesc.value; sug.textContent = '';
+      const q = iDesc.value.trim().toLowerCase();
+      const list = q ? P.filter(p => (p.ProductName + ' ' + (p.SKU || '')).toLowerCase().indexOf(q) > -1).slice(0, 6) : [];
+      list.forEach(p => {
+        const b = el('button', p.ProductName + (p.SKU ? '  (' + p.SKU + ')' : '') + '  -  ' + money(n(p.SellingPrice)));
+        b.type = 'button'; b.addEventListener('pointerdown', e => { e.preventDefault(); pick(p); }); sug.appendChild(b);
+      });
+      sug.classList.toggle('hide', !list.length);
+    };
+    iDesc.onblur = () => setTimeout(() => sug.classList.add('hide'), 200);
+    iQty.oninput = () => { r.qty = Math.max(0, Math.floor(n(iQty.value))); refresh(); };
+    iPrice.oninput = () => { r.price = Math.max(0, n(iPrice.value)); refresh(); };
+    rm.onclick = () => { rows.splice(rows.indexOf(r), 1); d.remove(); if (!rows.length) addRow(); totals(); scheduleRisk(); };
+    $('rows').appendChild(d);
+  }
+  $('addRow').onclick = addRow;
+
+  /* ---------- Totals and billing terms ---------- */
   function calc() {
-    const sub = items.reduce((a, i) => a + i.qty * i.price, 0), disc = n($('disc').value), dl = n($('deliv').value), adv = n($('adv').value);
-    return { sub: sub, disc: disc, dl: dl, adv: adv, total: sub - disc + dl, cod: sub - disc + dl - adv };
+    const sub = rows.reduce((a, r) => a + r.qty * r.price, 0);
+    const pct = Math.min(100, Math.max(0, n($('dpct').value)));
+    const disc = Math.round(sub * pct) / 100, total = sub - disc, t = $('terms').value;
+    const adv = t === 'Advanced Cash' ? total : t === 'Zero Payment' ? 0 : Math.min(total, Math.max(0, n($('adv').value)));
+    return { sub: sub, pct: pct, disc: disc, total: total, adv: adv, cod: total - adv, t: t };
   }
   function totals() {
-    const c = calc(), box = $('totals'); box.textContent = '';
-    [['Subtotal', c.sub], ['Discount', -c.disc], ['Delivery', c.dl], ['Advance received', -c.adv]].forEach(r => {
-      const d = el('div', undefined, 'tot'); d.append(el('span', r[0]), el('span', money(r[1]))); box.appendChild(d);
-    });
-    const big = el('div', undefined, 'tot big'); big.append(el('span', 'Cash to collect (COD)'), el('span', money(c.cod))); box.appendChild(big);
+    const c = calc();
+    $('tsub').textContent = money(c.sub); $('tdisc').textContent = money(c.disc); $('ttot').textContent = money(c.total);
+    $('collect').textContent = c.t === 'Advanced Cash' ? 'Paid in advance. Nothing to collect on delivery.'
+      : c.t === 'Zero Payment' ? 'Free order. Nothing to collect.' : 'To collect on delivery: ' + money(c.cod);
   }
-  ['disc', 'deliv', 'adv'].forEach(id => $(id).addEventListener('input', totals));
+  $('terms').onchange = () => {
+    const t = $('terms').value;
+    $('advBox').classList.toggle('hide', t !== 'Cash On Delivery');
+    if (t === 'Zero Payment') { $('dpct').value = '100'; $('dpct').disabled = true; }
+    else { $('dpct').disabled = false; if (prevTerms === 'Zero Payment') $('dpct').value = '0'; }
+    prevTerms = t; totals();
+  };
+  ['dpct', 'adv'].forEach(id => $(id).addEventListener('input', totals));
 
-  /* ---------- Save ---------- */
+  /* ---------- Create order, then the print / PDF popup ---------- */
   $('save').onclick = async () => {
-    if (!storeId) return toast('Pick a store.');
-    if (!items.length) return toast('Add at least one product.');
-    if (items.some(i => i.qty < 1)) return toast('Every product needs a quantity of 1 or more.');
+    const filled = rows.filter(r => r.pid || r.desc.trim());
+    if (!$('cname').value.trim() && !lastPhone) { /* the server decides whether the name is needed */ }
+    if (!filled.length) return toast('Add at least one product.');
+    const bad = filled.findIndex(r => !r.pid);
+    if (bad > -1) return toast('Item ' + (bad + 1) + ': pick the product from the suggestions list.');
+    if (filled.some(r => r.qty < 1)) return toast('Every item needs a quantity of 1 or more.');
+    const c = calc();
     $('save').disabled = true; $('save').textContent = 'Saving...';
     try {
       const r = await api('createOrder', {
-        storeId: storeId, phone: $('phone').value,
-        customer: { name: $('cname').value, city: $('ccity').value, address: $('caddr').value },
-        items: items.map(i => ({ productId: i.productId, qty: i.qty, unitPrice: i.price })),
-        discount: n($('disc').value), deliveryCharge: n($('deliv').value), advance: n($('adv').value),
-        courierCharge: $('ccost').value, courierId: courierId, cn: $('cn').value, sourceId: sourceId,
-        invoiceStyle: style, invoiceNote: $('note').value, overrideReason: $('reason').value
+        storeId: sid, phone: $('phone').value,
+        customer: { name: $('cname').value, city: $('ccity').value, email: $('cemail').value,
+                    address: [$('a1').value.trim(), $('a2').value.trim()].filter(Boolean).join('\n') },
+        items: filled.map(x => ({ productId: x.pid, qty: x.qty, unitPrice: x.price })),
+        discountPercent: c.pct, billingTerms: c.t, billingDate: $('bdate').value, advance: c.adv,
+        courierId: $('courier').value, invoiceNote: $('note').value, overrideReason: $('reason').value
       });
-      $('formWrap').classList.add('hide'); $('done').classList.remove('hide');
+      lastData = await api('getInvoiceData', { orderId: r.orderId });
+      $('sheet').classList.add('hide'); $('done').classList.remove('hide');
       $('doneTitle').textContent = 'Order created: ' + r.invoiceNo;
-      $('doneText').textContent = 'Cash to collect: ' + money(r.cod) + '. Risk: ' + r.risk + '.';
+      $('doneText').textContent = (c.t === 'Cash On Delivery' ? 'Cash to collect: ' + money(r.cod) + '. ' : '') + 'Risk: ' + r.risk + '.';
       window.scrollTo(0, 0);
-    } catch (e) { toast(e.message); $('save').disabled = false; $('save').textContent = 'Create order'; }
+      Invoice.openDialog(lastData);
+    } catch (e) { toast(e.message); $('save').disabled = false; $('save').textContent = 'Create Order'; }
   };
+  $('reopen').onclick = () => { if (lastData) Invoice.openDialog(lastData); };
 
   init();
 </script>
