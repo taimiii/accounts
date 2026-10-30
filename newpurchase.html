@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>New purchase</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  select, input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line);
+                             border-radius: 8px; background: var(--bg); color: var(--text); }
+  option { background: var(--card); color: var(--text); }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 14px; flex: 1 1 140px; }
+  .h12 { font-size: 12pt; font-weight: 700; margin: 0 0 8px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .ihead, .irow { display: grid; grid-template-columns: 1fr 110px 70px 100px 140px 110px 34px; gap: 8px; align-items: center; }
+  .ihead { font-weight: 700; font-size: .85rem; color: var(--muted); border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .irow { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .irow input[type=text], .irow input[type=date] { padding: 9px; }
+  .cell { position: relative; } .amt { text-align: right; font-weight: 600; }
+  .rm { width: 34px; margin: 0; padding: 6px 0; }
+  .sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--card);
+          border: 1px solid var(--line); border-radius: 8px; max-height: 220px; overflow: auto; }
+  .sugg button { display: block; width: 100%; margin: 0; padding: 10px; text-align: left; background: transparent;
+                 color: var(--text); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; font-weight: 500; font-size: .92rem; }
+  .addrow { margin-top: 10px; }
+  .total { text-align: right; font-size: 15pt; font-weight: 700; margin-top: 16px; }
+  @media (max-width: 700px) {
+    .two { grid-template-columns: 1fr; }
+    .ihead { display: none; }
+    .irow { grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 10px; }
+    .cell::before { content: attr(data-l); display: block; font-size: .72rem; color: var(--muted); }
+    .cell.desc, .cell.x, .cell.exp { grid-column: 1 / -1; }
+    .rm { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>New purchase</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='stock.html'">Stock</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card hide" id="nostore">
+    <h2>Select a store first</h2>
+    <p class="muted">Purchases are added to one store's stock. Choose your working store on the dashboard.</p>
+    <div class="btns"><button onclick="location.href='app.html'">Go to dashboard</button></div>
+  </div>
+  <div class="card hide" id="done">
+    <h2 id="doneTitle"></h2><p class="muted" id="doneText"></p>
+    <div class="btns"><button onclick="location.reload()">Another purchase</button>
+      <button class="ghost" onclick="location.href='stock.html'">View stock</button></div>
+  </div>
+
+  <div class="card hide" id="sheet">
+    <div class="two">
+      <div>
+        <label>Vendor</label><select id="vendor"><option value="">Select vendor</option></select>
+        <label>Vendor invoice no (optional)</label><input id="ref" type="text" autocomplete="off">
+      </div>
+      <div>
+        <label>Purchase date</label><input id="pdate" type="date">
+        <label>Note (optional)</label><input id="note" type="text" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="h12" style="margin-top:22px">Items</div>
+    <div class="ihead"><div>Product</div><div>Batch No</div><div>Qty</div><div>Cost price</div><div>Expiry (optional)</div><div style="text-align:right">Amount</div><div></div></div>
+    <div id="rows"></div>
+    <button class="ghost addrow" id="addRow">+ Add item</button>
+    <div class="total">Total: <span id="tot">Rs 0</span></div>
+    <div class="btns"><button id="save" disabled>Save purchase</button></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('purchases')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const sid = Store.storeId;
+  let P = [], rows = [];
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+
+  async function init() {
+    if (!sid) { $('nostore').classList.remove('hide'); return; }
+    $('sub').textContent = Store.storeName;
+    let L;
+    try { L = await api('getLists'); } catch (e) { $('err').textContent = e.message; return; }
+    if (!L.stores.some(s => s.StoreID === sid)) { Store.setStore('', ''); $('nostore').classList.remove('hide'); return; }
+    P = L.products.filter(p => p.StoreID === sid);
+    (L.vendors || []).forEach(v => { const o = el('option', v.VendorName); o.value = v.VendorID; $('vendor').appendChild(o); });
+    if (!(L.vendors || []).length) $('err').textContent = 'No vendors yet. Add one in Setup Lists first.';
+    $('pdate').value = new Date().toLocaleDateString('en-CA');
+    $('sheet').classList.remove('hide'); addRow(); $('save').disabled = false;
+  }
+
+  function addRow() {
+    const r = { pid: '', desc: '', batch: '', qty: 1, cost: '', exp: '' }; rows.push(r);
+    const d = el('div', undefined, 'irow');
+    const cell = (cls, label) => { const c = el('div', undefined, 'cell ' + cls); c.dataset.l = label; d.appendChild(c); return c; };
+    const inp = (parent, type) => { const i = el('input'); i.type = type || 'text'; i.autocomplete = 'off'; parent.appendChild(i); return i; };
+
+    const cD = cell('desc', 'Product'), iD = inp(cD); iD.placeholder = 'Type product name'; const sug = el('div', undefined, 'sugg hide'); cD.appendChild(sug);
+    const iB = inp(cell('batch', 'Batch No'));
+    const iQ = inp(cell('qty', 'Qty')); iQ.inputMode = 'numeric'; iQ.value = 1;
+    const iC = inp(cell('cost', 'Cost price')); iC.inputMode = 'decimal';
+    const iE = inp(cell('exp', 'Expiry (optional)'), 'date');
+    const amt = el('div', '0', 'amt'); cell('amt', 'Amount').appendChild(amt);
+    const rm = el('button', 'x', 'ghost rm'); cell('x', '').appendChild(rm);
+
+    const refresh = () => { amt.textContent = money(r.qty * n(r.cost)); total(); };
+    iD.oninput = () => {
+      r.pid = ''; r.desc = iD.value; sug.textContent = '';
+      const q = iD.value.trim().toLowerCase();
+      const list = q ? P.filter(p => (p.ProductName + ' ' + (p.SKU || '')).toLowerCase().indexOf(q) > -1).slice(0, 6) : [];
+      list.forEach(p => {
+        const b = el('button', p.ProductName + (p.SKU ? '  (' + p.SKU + ')' : '')); b.type = 'button';
+        b.addEventListener('pointerdown', e => { e.preventDefault(); r.pid = p.ProductID; r.desc = p.ProductName; iD.value = p.ProductName; sug.classList.add('hide'); });
+        sug.appendChild(b);
+      });
+      sug.classList.toggle('hide', !list.length);
+    };
+    iD.onblur = () => setTimeout(() => sug.classList.add('hide'), 200);
+    iB.oninput = () => r.batch = iB.value;
+    iQ.oninput = () => { r.qty = Math.max(0, Math.floor(n(iQ.value))); refresh(); };
+    iC.oninput = () => { r.cost = iC.value; refresh(); };
+    iE.oninput = () => r.exp = iE.value;
+    rm.onclick = () => { rows.splice(rows.indexOf(r), 1); d.remove(); if (!rows.length) addRow(); total(); };
+    $('rows').appendChild(d);
+  }
+  $('addRow').onclick = addRow;
+  function total() { $('tot').textContent = money(rows.reduce((a, r) => a + r.qty * n(r.cost), 0)); }
+
+  $('save').onclick = async () => {
+    if (!$('vendor').value) return toast('Choose a vendor.');
+    const filled = rows.filter(r => r.pid || r.desc.trim() || r.batch.trim());
+    if (!filled.length) return toast('Add at least one item.');
+    const bad = filled.findIndex(r => !r.pid);
+    if (bad > -1) return toast('Item ' + (bad + 1) + ': pick the product from the suggestions list.');
+    $('save').disabled = true; $('save').textContent = 'Saving...';
+    try {
+      const r = await api('createPurchase', {
+        storeId: sid, vendorId: $('vendor').value, invoiceRef: $('ref').value, date: $('pdate').value, note: $('note').value,
+        items: filled.map(x => ({ productId: x.pid, batchNo: x.batch, qty: x.qty, cost: x.cost, expiry: x.exp }))
+      });
+      $('sheet').classList.add('hide'); $('done').classList.remove('hide');
+      $('doneTitle').textContent = 'Purchase saved'; $('doneText').textContent = 'Total ' + money(r.total) + '. The items are now in stock as new batches.';
+      window.scrollTo(0, 0);
+    } catch (e) { toast(e.message); $('save').disabled = false; $('save').textContent = 'Save purchase'; }
+  };
+
+  init();
+</script>
+</body>
+</html>

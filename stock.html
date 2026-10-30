@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Purchases & Stock</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { width: auto; margin: 0; padding: 8px 16px; border: 1px solid var(--line); background: var(--card);
+          color: var(--text); border-radius: 99px; font-weight: 500; font-size: .9rem; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .item { border-bottom: 1px solid var(--line); padding: 12px 0; }
+  .item:last-child { border-bottom: 0; }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row small { display: block; color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .tag.bad { color: var(--err); border-color: var(--err); } .tag.warn { color: #d97706; border-color: #d97706; }
+  .batches { margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: .88rem; }
+  .batches div { padding: 4px 0; overflow-wrap: anywhere; } .batches .gone { opacity: .5; }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 140px; }
+  .total { font-weight: 700; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Purchases &amp; Stock</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card hide" id="nostore">
+    <h2>Select a store first</h2>
+    <p class="muted">Stock is kept separately for each store. Choose your working store on the dashboard.</p>
+    <div class="btns"><button onclick="location.href='app.html'">Go to dashboard</button></div>
+  </div>
+
+  <div id="main" class="hide">
+    <div class="card">
+      <div class="chips" id="tabs"></div>
+      <input id="q" type="text" placeholder="Search product, SKU or vendor" autocomplete="off">
+      <div class="btns"><button onclick="location.href='newpurchase.html'">New purchase</button></div>
+    </div>
+    <div class="card sp"><div id="list">Loading...</div><div class="total" id="total"></div></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('purchases')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const sid = Store.storeId;
+  let tab = 'Stock', stock = null, purchases = null;
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const money = v => v === null || v === undefined ? '' : 'Rs ' + Math.round(Number(v)).toLocaleString('en-PK');
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
+
+  function drawTabs() {
+    const box = $('tabs'); box.textContent = '';
+    ['Stock', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); load(); }; box.appendChild(b); });
+  }
+
+  async function load() {
+    $('err').textContent = '';
+    try {
+      if (tab === 'Stock' && !stock) stock = await api('listStock', { storeId: sid });
+      if (tab === 'Purchases' && !purchases) purchases = await api('listPurchases', { storeId: sid });
+      render();
+    } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
+  }
+  $('q').addEventListener('input', render);
+
+  function expiryTag(exp) {
+    if (!exp) return null;
+    const left = (new Date(exp) - Date.now()) / 86400000;
+    if (left < 0) return el('span', 'Expired', 'tag bad');
+    if (left <= 60) return el('span', 'Expires ' + day(exp), 'tag warn');
+    return null;
+  }
+
+  function render() {
+    const q = $('q').value.trim().toLowerCase(), box = $('list'); box.textContent = ''; $('total').textContent = '';
+    if (tab === 'Stock') {
+      if (!stock) return;
+      const rows = stock.products.filter(p => !q || (p.name + ' ' + p.sku).toLowerCase().indexOf(q) > -1);
+      $('sub').textContent = Store.storeName + '  |  ' + rows.length + ' products';
+      rows.forEach(p => {
+        const it = el('div', undefined, 'item'), row = el('div', undefined, 'row'), left = el('div');
+        const t = el('b', p.name + (p.sku ? '  (' + p.sku + ')' : ''));
+        if (p.low) t.append(el('span', p.remaining <= 0 ? 'Out of stock' : 'Low stock', 'tag bad'));
+        left.append(t, el('small', p.remaining + ' in stock' + (p.value !== null ? '  |  value ' + money(p.value) : '')));
+        const det = el('div', undefined, 'batches hide');
+        if (!p.batches.length) det.textContent = 'No batches yet.';
+        p.batches.slice().sort((a, b) => (b.remaining > 0) - (a.remaining > 0)).forEach(b => {
+          const d = el('div', undefined, b.remaining > 0 ? '' : 'gone');
+          d.textContent = 'Batch ' + b.batchNo + '  |  ' + day(b.received) + '  |  ' + b.remaining + ' of ' + b.qtyIn + ' left' +
+                          (b.cost !== null ? '  |  cost ' + money(b.cost) : '') + (b.expiry ? '  |  exp ' + day(b.expiry) : '');
+          const tg = b.remaining > 0 ? expiryTag(b.expiry) : null; if (tg) d.appendChild(tg);
+          det.appendChild(d);
+        });
+        const btn = el('button', 'Batches', 'ghost'); btn.onclick = () => det.classList.toggle('hide');
+        const acts = el('div', undefined, 'acts'); acts.appendChild(btn);
+        row.append(left, acts); it.append(row, det); box.appendChild(it);
+      });
+      if (!rows.length) box.textContent = stock.products.length ? 'No match.' : 'No products in this store yet. Add them in Setup Lists.';
+      if (stock.totalValue !== null) $('total').textContent = 'Total stock value: ' + money(stock.totalValue);
+    } else {
+      if (!purchases) return;
+      const rows = purchases.filter(p => !q || (p.vendor + ' ' + p.ref + ' ' + p.items).toLowerCase().indexOf(q) > -1);
+      $('sub').textContent = Store.storeName + '  |  ' + rows.length + ' purchases';
+      rows.forEach(p => {
+        const it = el('div', undefined, 'item'), row = el('div', undefined, 'row'), left = el('div');
+        left.append(el('b', p.vendor + (p.ref ? '  |  ' + p.ref : '')), el('small', day(p.date)), el('small', p.items));
+        if (p.note) left.appendChild(el('small', 'Note: ' + p.note));
+        const rt = el('div'); rt.style.textAlign = 'right'; rt.appendChild(el('b', money(p.total)));
+        row.append(left, rt); it.appendChild(row); box.appendChild(it);
+      });
+      if (!rows.length) box.textContent = purchases.length ? 'No match.' : 'No purchases yet. Tap "New purchase".';
+    }
+  }
+
+  if (!sid) $('nostore').classList.remove('hide');
+  else { $('main').classList.remove('hide'); drawTabs(); load(); }
+</script>
+</body>
+</html>
