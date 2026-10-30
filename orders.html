@@ -109,6 +109,7 @@
         inv.disabled = false;
       };
       acts.appendChild(inv);
+      const ed = el('button', 'Edit', 'ghost'); ed.onclick = () => { location.href = 'neworder.html?edit=' + encodeURIComponent(o.OrderID); }; acts.appendChild(ed);
       (NEXT[o.Status] || []).forEach(to => { const b = el('button', to === 'Dispatched' ? 'Dispatch' : to, 'ghost'); b.onclick = () => openAction(o, to); acts.appendChild(b); });
       row.append(left, acts); box.appendChild(row);
     });

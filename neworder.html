@@ -58,7 +58,7 @@
 </head>
 <body>
 <header>
-  <div class="who"><b>New order</b><small id="sub"></small></div>
+  <div class="who"><b id="ttl">New order</b><small id="sub"></small></div>
   <button class="ghost" onclick="location.href='orders.html'">Orders</button>
 </header>
 
@@ -98,15 +98,15 @@
         <div class="risk hide" id="risk"></div>
       </div>
       <div>
-        <label>Invoice No</label><input id="invno" type="text" readonly>
+        <label>Invoice No</label><input id="invno" type="text" placeholder="Invoice No" autocomplete="off">
         <label>Billing Date</label><input id="bdate" type="date">
         <label>Billing Terms</label>
         <select id="terms">
           <option>Cash On Delivery</option><option>Advanced Cash</option><option>Zero Payment</option>
         </select>
-        <div id="advBox"><label>Advance already received (Rs)</label><input id="adv" type="text" inputmode="decimal" value="0"></div>
-        <label>Courier (not printed on the invoice)</label>
-        <select id="courier"><option value="">Select courier (optional)</option></select>
+        <div id="advBox" class="hide"><label>Advance Amount</label><input id="adv" type="text" inputmode="decimal" value="0"></div>
+        <label>Courier</label>
+        <select id="courier"><option value="">Select courier</option></select>
       </div>
     </div>
 
@@ -125,10 +125,10 @@
       <small class="info" id="collect"></small>
     </div>
 
-    <label style="margin-top:18px">Note on invoice (optional)</label>
+    <label style="margin-top:18px">Note (optional)</label>
     <input id="note" type="text" autocomplete="off">
     <div id="reasonBox" class="hide">
-      <label>HIGH RISK: reason to continue anyway *</label><input id="reason" type="text" autocomplete="off">
+      <label>High risk: reason to continue *</label><input id="reason" type="text" autocomplete="off">
     </div>
     <div class="btns"><button id="save" disabled>Create Order</button></div>
   </div>
@@ -143,7 +143,8 @@
   if (!Store.token || !can('orders')) location.replace('app.html');
   const $ = id => document.getElementById(id);
   const sid = Store.storeId;
-  let L = null, P = [], rows = [], riskTimer = null, lastPhone = '', prevTerms = 'Cash On Delivery', lastData = null;
+  const editId = new URLSearchParams(location.search).get('edit') || '';
+  let L = null, P = [], rows = [], riskTimer = null, lastPhone = '', prevTerms = 'Cash On Delivery', lastData = null, frozen = false;
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -158,10 +159,38 @@
     P = L.products.filter(p => p.StoreID === sid);
     L.couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; $('courier').appendChild(o); });
     $('bdate').value = new Date().toLocaleDateString('en-CA');
+    if (editId) { await loadForEdit(); return; }
     $('sheet').classList.remove('hide');
     addRow(); totals();
-    try { $('invno').value = await api('getNextInvoiceNo', { storeId: sid }); } catch (e) { $('invno').value = 'Auto'; }
     $('save').disabled = false;
+  }
+
+  /* ---------- Edit an existing invoice ---------- */
+  async function loadForEdit() {
+    let o;
+    try { o = await api('getOrderForEdit', { orderId: editId }); } catch (e) { $('err').textContent = e.message; return; }
+    if (o.storeId !== sid) {
+      $('nostore').querySelector('h2').textContent = 'Switch store first';
+      $('nostore').querySelector('p').textContent = 'This invoice belongs to another store. Select that store on the dashboard, then edit it.';
+      $('nostore').classList.remove('hide'); return;
+    }
+    $('ttl').textContent = 'Edit invoice'; $('save').textContent = 'Save changes';
+    const c = o.customer, lines = String(c.address || '').split('\n');
+    $('cname').value = c.name; $('a1').value = lines[0] || ''; $('a2').value = lines.slice(1).join(', ');
+    $('ccity').value = c.city; $('cemail').value = c.email; $('phone').value = c.phone; lastPhone = c.phone;
+    $('invno').value = o.invoiceNo; $('bdate').value = new Date(o.date).toLocaleDateString('en-CA');
+    $('terms').value = o.terms; $('courier').value = o.courierId; $('dpct').value = o.discountPercent;
+    $('adv').value = o.advance; $('note').value = o.note;
+    $('rows').textContent = ''; rows = [];
+    o.items.forEach(i => addRow({ pid: i.productId, sku: i.sku, desc: i.desc, qty: i.qty, price: i.price }));
+    if (!rows.length) addRow();
+    applyTerms();
+    if (o.frozen) {   // paid / returned / refused / cancelled: only details can change
+      frozen = true;
+      document.querySelectorAll('#rows input, #rows button, #addRow, #terms, #dpct, #adv').forEach(x => x.disabled = true);
+      $('custInfo').textContent = 'This invoice is ' + o.status + ': products and amounts are locked. You can still change the details above.';
+    }
+    $('sheet').classList.remove('hide'); $('save').disabled = false; totals();
   }
 
   /* ---------- Customer lookup (fills only empty fields) ---------- */
@@ -189,7 +218,7 @@
   $('a1').addEventListener('blur', scheduleRisk); $('a2').addEventListener('blur', scheduleRisk);
 
   /* ---------- Duplicate / risky order banner ---------- */
-  function scheduleRisk() { clearTimeout(riskTimer); riskTimer = setTimeout(runRisk, 500); }
+  function scheduleRisk() { if (editId) return; clearTimeout(riskTimer); riskTimer = setTimeout(runRisk, 500); }
   async function runRisk() {
     const phone = $('phone').value.trim(); if (phone.replace(/\D/g, '').length < 10) return;
     try {
@@ -202,16 +231,16 @@
   }
 
   /* ---------- Invoice details rows ---------- */
-  function addRow() {
-    const r = { pid: '', sku: '', desc: '', qty: 1, price: 0 }; rows.push(r);
+  function addRow(init) {
+    const r = Object.assign({ pid: '', sku: '', desc: '', qty: 1, price: 0 }, init || {}); rows.push(r);
     const d = el('div', undefined, 'irow'), cells = {};
     const cell = (cls, label) => { const c = el('div', undefined, 'cell ' + cls); c.dataset.l = label; d.appendChild(c); return c; };
     const inp = (parent, ph) => { const i = el('input'); i.type = 'text'; i.autocomplete = 'off'; if (ph) i.placeholder = ph; parent.appendChild(i); return i; };
 
     const cSku = cell('sku', 'SKU'), iSku = inp(cSku);
     const cDesc = cell('desc', 'Description'), iDesc = inp(cDesc, 'Type product name'), sug = el('div', undefined, 'sugg hide'); cDesc.appendChild(sug);
-    const cQty = cell('qty', 'Qty'), iQty = inp(cQty); iQty.inputMode = 'numeric'; iQty.value = 1;
-    const cPrice = cell('price', 'Unit Price'), iPrice = inp(cPrice); iPrice.inputMode = 'decimal'; iPrice.value = 0;
+    const cQty = cell('qty', 'Qty'), iQty = inp(cQty); iQty.inputMode = 'numeric'; iQty.value = r.qty;
+    const cPrice = cell('price', 'Unit Price'), iPrice = inp(cPrice); iPrice.inputMode = 'decimal'; iPrice.value = r.price;
     const cAmt = cell('amt', 'Amount'), amt = el('div', '0', 'amt'); cAmt.appendChild(amt);
     const cX = cell('x', ''), rm = el('button', 'x', 'ghost rm'); cX.appendChild(rm);
 
@@ -235,37 +264,41 @@
     iQty.oninput = () => { r.qty = Math.max(0, Math.floor(n(iQty.value))); refresh(); };
     iPrice.oninput = () => { r.price = Math.max(0, n(iPrice.value)); refresh(); };
     rm.onclick = () => { rows.splice(rows.indexOf(r), 1); d.remove(); if (!rows.length) addRow(); totals(); scheduleRisk(); };
+    iSku.value = r.sku; iDesc.value = r.desc; amt.textContent = money(r.qty * r.price);
     $('rows').appendChild(d);
   }
-  $('addRow').onclick = addRow;
+  $('addRow').onclick = () => addRow();
 
   /* ---------- Totals and billing terms ---------- */
   function calc() {
     const sub = rows.reduce((a, r) => a + r.qty * r.price, 0);
     const pct = Math.min(100, Math.max(0, n($('dpct').value)));
     const disc = Math.round(sub * pct) / 100, total = sub - disc, t = $('terms').value;
-    const adv = t === 'Advanced Cash' ? total : t === 'Zero Payment' ? 0 : Math.min(total, Math.max(0, n($('adv').value)));
+    const adv = t === 'Advanced Cash' ? Math.min(total, Math.max(0, n($('adv').value))) : 0;
     return { sub: sub, pct: pct, disc: disc, total: total, adv: adv, cod: total - adv, t: t };
   }
   function totals() {
     const c = calc();
     $('tsub').textContent = money(c.sub); $('tdisc').textContent = money(c.disc); $('ttot').textContent = money(c.total);
-    $('collect').textContent = c.t === 'Advanced Cash' ? 'Paid in advance. Nothing to collect on delivery.'
+    $('collect').textContent = c.t === 'Advanced Cash' ? 'Advance received: ' + money(c.adv) + '.  To collect on delivery: ' + money(c.cod)
       : c.t === 'Zero Payment' ? 'Free order. Nothing to collect.' : 'To collect on delivery: ' + money(c.cod);
   }
-  $('terms').onchange = () => {
+  // Advance Amount shows only for "Advanced Cash"; Zero Payment fixes the discount at 100%
+  function applyTerms() {
     const t = $('terms').value;
-    $('advBox').classList.toggle('hide', t !== 'Cash On Delivery');
+    $('advBox').classList.toggle('hide', t !== 'Advanced Cash');
+    if (t !== 'Advanced Cash') $('adv').value = '0';
     if (t === 'Zero Payment') { $('dpct').value = '100'; $('dpct').disabled = true; }
-    else { $('dpct').disabled = false; if (prevTerms === 'Zero Payment') $('dpct').value = '0'; }
+    else { $('dpct').disabled = frozen; if (prevTerms === 'Zero Payment') $('dpct').value = '0'; }
     prevTerms = t; totals();
-  };
+  }
+  $('terms').onchange = applyTerms;
   ['dpct', 'adv'].forEach(id => $(id).addEventListener('input', totals));
 
   /* ---------- Create order, then the print / PDF popup ---------- */
   $('save').onclick = async () => {
+    if (!$('invno').value.trim()) return toast('Enter the Invoice No.');
     const filled = rows.filter(r => r.pid || r.desc.trim());
-    if (!$('cname').value.trim() && !lastPhone) { /* the server decides whether the name is needed */ }
     if (!filled.length) return toast('Add at least one product.');
     const bad = filled.findIndex(r => !r.pid);
     if (bad > -1) return toast('Item ' + (bad + 1) + ': pick the product from the suggestions list.');
@@ -273,8 +306,8 @@
     const c = calc();
     $('save').disabled = true; $('save').textContent = 'Saving...';
     try {
-      const r = await api('createOrder', {
-        storeId: sid, phone: $('phone').value,
+      const r = await api(editId ? 'updateOrder' : 'createOrder', {
+        orderId: editId, invoiceNo: $('invno').value.trim(), storeId: sid, phone: $('phone').value,
         customer: { name: $('cname').value, city: $('ccity').value, email: $('cemail').value,
                     address: [$('a1').value.trim(), $('a2').value.trim()].filter(Boolean).join('\n') },
         items: filled.map(x => ({ productId: x.pid, qty: x.qty, unitPrice: x.price })),
@@ -283,11 +316,11 @@
       });
       lastData = await api('getInvoiceData', { orderId: r.orderId });
       $('sheet').classList.add('hide'); $('done').classList.remove('hide');
-      $('doneTitle').textContent = 'Order created: ' + r.invoiceNo;
-      $('doneText').textContent = (c.t === 'Cash On Delivery' ? 'Cash to collect: ' + money(r.cod) + '. ' : '') + 'Risk: ' + r.risk + '.';
+      $('doneTitle').textContent = (editId ? 'Invoice saved: ' : 'Order created: ') + r.invoiceNo;
+      $('doneText').textContent = editId ? 'Your changes are saved.' : (r.cod > 0 ? 'Cash to collect: ' + money(r.cod) + '. ' : '') + 'Risk: ' + r.risk + '.';
       window.scrollTo(0, 0);
       Invoice.openDialog(lastData);
-    } catch (e) { toast(e.message); $('save').disabled = false; $('save').textContent = 'Create Order'; }
+    } catch (e) { toast(e.message); $('save').disabled = false; $('save').textContent = editId ? 'Save changes' : 'Create Order'; }
   };
   $('reopen').onclick = () => { if (lastData) Invoice.openDialog(lastData); };
 

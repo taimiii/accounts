@@ -103,7 +103,6 @@ const Invoice = (function () {
     bill.appendChild(h('div', 'inv-name', d.customer.name));
     String(d.customer.address || '').split('\n').forEach(l => { if (l.trim()) bill.appendChild(h('div', null, l.trim())); });
     if (d.customer.city) bill.appendChild(h('div', null, d.customer.city));
-    if (d.customer.email) bill.appendChild(h('div', null, d.customer.email));
     if (d.customer.phone) bill.appendChild(h('div', null, d.customer.phone));
     const meta = h('div', 'inv-meta');
     meta.append(row('Invoice No', d.invoiceNo), row('Billing Date', fdate(d.date)), row('Billing Terms', d.terms));
@@ -132,7 +131,7 @@ const Invoice = (function () {
     const tot = h('div', 'inv-totals');
     tot.append(row('SUBTOTAL', money(d.subtotal)), row('DISCOUNT %', (d.discPct || 0) + '%'), row('DISCOUNT', money(d.discount)));
     tot.appendChild(row('TOTAL', money(d.total), 'inv-total'));
-    if (d.advance > 0 && d.advance < d.total) { tot.append(row('Advance paid', money(d.advance)), row('Balance due', money(d.total - d.advance))); }
+    if (d.advance > 0) { tot.append(row('Advance Amount', money(d.advance)), row('Balance Due', money(Math.max(0, d.total - d.advance)))); }
     root.appendChild(tot);
 
     if (d.note) root.appendChild(h('div', 'inv-note', 'Note: ' + d.note));
