@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Product List</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 4px; }
+  .checks label { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--text); font-size: .95rem; }
+  input[type=checkbox] { width: auto; }
+  .h { font-size: .8rem; color: var(--muted); margin: 10px 0 0; text-transform: uppercase; letter-spacing: .5px; }
+  .tw { overflow-x: auto; }
+  table.pl { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  table.pl th, table.pl td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  table.pl th { color: var(--muted); font-size: .78rem; text-transform: uppercase; }
+  table.pl .r { text-align: right; }
+  #printArea { display: none; }
+  @media print {
+    body.printing > *:not(#printArea) { display: none !important; }
+    body.printing #printArea { display: block; }
+    @page { size: A4 landscape; margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Product List</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card hide" id="nostore">
+    <h2>Select a store first</h2>
+    <p class="muted">The product list belongs to one store. Choose your working store on the dashboard.</p>
+    <div class="btns"><button onclick="location.href='app.html'">Go to dashboard</button></div>
+  </div>
+
+  <div id="main" class="hide">
+    <div class="card">
+      <div class="h">Columns to show</div>
+      <div class="checks" id="cols"></div>
+      <div class="h" id="costHint"></div>
+      <div class="h">Filter</div>
+      <div class="checks"><label><input type="checkbox" id="onlyActive" checked> Active products only</label>
+        <label><input type="checkbox" id="onlyStock"> Only products in stock</label></div>
+      <input id="q" type="text" placeholder="Search product or SKU" autocomplete="off">
+      <div class="btns" id="dl">
+        <button id="xls">Download Excel</button>
+        <button id="pdf">Save PDF</button>
+        <button class="ghost" id="prn">Print</button>
+      </div>
+      <p class="muted" id="noexp"></p>
+    </div>
+    <div class="card sp tw"><div id="tbl">Loading...</div></div>
+  </div>
+</main>
+<div id="toast"></div>
+<div id="printArea"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token) location.replace('index.html');
+  const $ = id => document.getElementById(id);
+  const sid = Store.storeId;
+  let data = null;
+  // cost = true: only shown to users who may see cost and profit
+  const COLS = [
+    { k: 'sku', l: 'SKU', on: 1 }, { k: 'name', l: 'Product', on: 1, fixed: 1 },
+    { k: 'price', l: 'Selling price', on: 1, num: 1 }, { k: 'weight', l: 'Weight (g)', num: 1 },
+    { k: 'vendor', l: 'Vendor' }, { k: 'stock', l: 'Stock', on: 1, num: 1 }, { k: 'reorder', l: 'Reorder level', num: 1 },
+    { k: 'lastCost', l: 'Cost price (latest batch)', num: 1, cost: 1 },
+    { k: 'avgCost', l: 'Average cost of stock', num: 1, cost: 1 },
+    { k: 'value', l: 'Stock value', num: 1, cost: 1 }
+  ];
+  const picked = {};
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const fmt = (c, v) => v === '' || v === null || v === undefined ? '' : (c.num ? Number(v).toLocaleString('en-PK', { maximumFractionDigits: 2 }) : String(v));
+
+  async function init() {
+    if (!sid) { $('nostore').classList.remove('hide'); return; }
+    try { data = await api('getProductList', { storeId: sid }); } catch (e) { $('err').textContent = e.message; return; }
+    $('main').classList.remove('hide'); $('sub').textContent = data.store;
+    const box = $('cols');
+    COLS.filter(c => !c.cost || data.costAllowed).forEach(c => {
+      picked[c.k] = !!c.on;
+      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = !!c.on; i.disabled = !!c.fixed;
+      i.onchange = () => { picked[c.k] = i.checked; draw(); };
+      l.append(i, document.createTextNode(' ' + c.l)); box.appendChild(l);
+    });
+    $('costHint').textContent = data.costAllowed ? 'Cost columns are off by default. Tick them only when you need them.' : '';
+    if (!data.canExport) { $('dl').classList.add('hide'); $('noexp').textContent = 'Downloading is not enabled for your account.'; }
+    ['onlyActive', 'onlyStock'].forEach(id => $(id).onchange = draw); $('q').oninput = draw;
+    draw();
+  }
+
+  const cols = () => COLS.filter(c => picked[c.k]);
+  function rows() {
+    const q = $('q').value.trim().toLowerCase();
+    return data.rows.filter(r => (!$('onlyActive').checked || r.active) && (!$('onlyStock').checked || r.stock > 0) &&
+      (!q || (r.name + ' ' + r.sku).toLowerCase().indexOf(q) > -1));
+  }
+
+  function table(forPrint) {
+    const t = el('table', undefined, 'pl'), hr = el('tr'), cs = cols(), rs = rows();
+    cs.forEach(c => hr.appendChild(el('th', c.l, c.num ? 'r' : '')));
+    const th = el('thead'); th.appendChild(hr); t.appendChild(th);
+    const tb = el('tbody');
+    rs.forEach(r => { const tr = el('tr'); cs.forEach(c => tr.appendChild(el('td', fmt(c, r[c.k]), c.num ? 'r' : ''))); tb.appendChild(tr); });
+    t.appendChild(tb);
+    if (forPrint) t.style.cssText = 'border-collapse:collapse;width:100%;font-size:10pt;color:#111;background:#fff';
+    return { t: t, n: rs.length };
+  }
+  function draw() { const o = table(false); $('tbl').textContent = ''; $('tbl').appendChild(o.t); if (!o.n) $('tbl').appendChild(el('p', 'No products match.', 'muted')); }
+
+  // A plain, black-on-white version of the list for PDF and printing
+  function sheet() {
+    const w = el('div'); w.style.cssText = 'font-family:Arial,sans-serif;color:#111;background:#fff;padding:8px';
+    const h = el('div', 'Product List - ' + data.store); h.style.cssText = 'font-size:16pt;font-weight:700';
+    const d = el('div', new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })); d.style.cssText = 'color:#555;margin:2px 0 10px';
+    const o = table(true);
+    o.t.querySelectorAll('th,td').forEach(x => { x.style.cssText = 'border:1px solid #999;padding:5px 7px;text-align:' + (x.className === 'r' ? 'right' : 'left'); });
+    o.t.querySelectorAll('th').forEach(x => x.style.background = '#eee');
+    w.append(h, d, o.t); return w;
+  }
+
+  async function logIt(what) { try { await api('logExport', { what: what, rows: rows().length }); return true; } catch (e) { toast(e.message); return false; } }
+  const stamp = () => new Date().toISOString().slice(0, 10);
+
+  $('xls').onclick = async () => {
+    if (typeof XLSX === 'undefined') return toast('Excel library did not load. Check your internet.');
+    if (!rows().length || !(await logIt('product list'))) return;
+    const cs = cols(), out = rows().map(r => { const o = {}; cs.forEach(c => o[c.l] = r[c.k]); return o; });
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out), 'Products');
+    XLSX.writeFile(wb, 'products-' + data.store.replace(/\W+/g, '-') + '-' + stamp() + '.xlsx');
+  };
+  $('pdf').onclick = async () => {
+    if (typeof html2pdf === 'undefined') return toast('PDF library did not load. Check your internet.');
+    if (!rows().length || !(await logIt('product list'))) return;
+    $('pdf').disabled = true;
+    try {
+      await html2pdf().set({ margin: 8, filename: 'products-' + data.store.replace(/\W+/g, '-') + '-' + stamp() + '.pdf',
+        image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: cols().length > 6 ? 'landscape' : 'portrait' } }).from(sheet()).save();
+    } catch (e) { toast(e.message); }
+    $('pdf').disabled = false;
+  };
+  $('prn').onclick = async () => {
+    if (!rows().length || !(await logIt('product list'))) return;
+    const a = $('printArea'); a.textContent = ''; a.appendChild(sheet()); document.body.classList.add('printing');
+    window.onafterprint = () => { document.body.classList.remove('printing'); a.textContent = ''; };
+    setTimeout(() => window.print(), 150);
+  };
+
+  init();
+</script>
+</body>
+</html>
