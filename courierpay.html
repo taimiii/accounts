@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Courier Payments</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  textarea { width: 100%; min-height: 70px; padding: 10px; font-size: .95rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font-family: inherit; }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { width: auto; margin: 0; padding: 8px 16px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 99px; font-weight: 500; font-size: .9rem; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .it { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .it:last-child { border-bottom: 0; }
+  .it input { width: auto; margin-top: 4px; }
+  .it .m { flex: 1; min-width: 0; overflow-wrap: anywhere; } .it small { display: block; color: var(--muted); }
+  .it .amt { text-align: right; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .tag.bad { color: var(--err); border-color: var(--err); }
+  .sum div { display: flex; justify-content: space-between; padding: 3px 0; }
+  .sum .big { font-weight: 700; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  .diff { margin-top: 8px; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; } .row small { display: block; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Courier Payments</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card hide" id="nostore">
+    <h2>Select a store first</h2>
+    <p class="muted">Courier payments belong to one store. Choose your working store on the dashboard.</p>
+    <div class="btns"><button onclick="location.href='app.html'">Go to dashboard</button></div>
+  </div>
+
+  <div id="main" class="hide">
+    <div class="chips" id="tabs"></div>
+
+    <!-- Receivables -->
+    <div id="recv">
+      <div class="chips" id="cchips"></div>
+      <div id="cbody" class="hide">
+        <div class="card">
+          <h2>Tick the orders in this payment</h2>
+          <p class="muted" id="ageNote"></p>
+          <label>Paste CN numbers from the courier statement (optional)</label>
+          <textarea id="cns" placeholder="One CN per line, or separated by commas or spaces"></textarea>
+          <div class="btns"><button class="ghost" id="match">Tick matching orders</button><button class="ghost" id="all">Tick all</button><button class="ghost" id="none">Clear</button></div>
+          <p class="muted" id="matchMsg"></p>
+        </div>
+        <div class="card sp"><div id="olist"></div></div>
+        <div class="card sp hide" id="rcard"><h2>Return charges not yet deducted</h2><div id="rlist"></div></div>
+
+        <div class="card sp">
+          <h2>Record the payment</h2>
+          <div class="sum" id="sum"></div>
+          <label>Amount received (Rs)</label><input id="amt" type="text" inputmode="decimal" autocomplete="off">
+          <div class="diff" id="diff"></div>
+          <label>Date received</label><input id="rdate" type="date">
+          <label>Received in</label><div class="checks" id="accts"></div>
+          <label>Note (optional)</label><input id="note" type="text" autocomplete="off">
+          <div class="btns"><button id="save">Record payment</button></div>
+        </div>
+      </div>
+      <div class="card hide" id="empty"><p class="muted">Nothing is waiting for payment. Delivered orders appear here until you record the courier's payment.</p></div>
+    </div>
+
+    <!-- History -->
+    <div id="hist" class="hide"><div class="card"><div id="hlist">Loading...</div></div></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('payments')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const sid = Store.storeId;
+  let tab = 'Receivables', recv = [], accounts = [], cur = null, selO = new Set(), selR = new Set(), acct = '';
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
+
+  async function init() {
+    if (!sid) { $('nostore').classList.remove('hide'); return; }
+    $('main').classList.remove('hide'); $('sub').textContent = Store.storeName;
+    $('rdate').value = new Date().toLocaleDateString('en-CA');
+    try { accounts = (await api('getLists')).accounts || []; } catch (e) { $('err').textContent = e.message; }
+    drawTabs(); await loadRecv();
+  }
+
+  function drawTabs() {
+    const box = $('tabs'); box.textContent = '';
+    ['Receivables', 'Payments'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); show(); }; box.appendChild(b); });
+  }
+  function show() { $('recv').classList.toggle('hide', tab !== 'Receivables'); $('hist').classList.toggle('hide', tab !== 'Payments'); if (tab === 'Payments') loadHist(); }
+
+  /* ---------- Receivables ---------- */
+  async function loadRecv() {
+    $('err').textContent = '';
+    try { recv = await api('listReceivables', { storeId: sid }); } catch (e) { $('err').textContent = e.message; return; }
+    if (cur && !recv.some(c => c.CourierID === cur)) cur = null;
+    if (!cur && recv.length) cur = recv[0].CourierID;
+    drawCouriers(); drawCourier();
+  }
+  function drawCouriers() {
+    const box = $('cchips'); box.textContent = '';
+    recv.forEach(c => { const b = el('button', c.name + ' (' + (c.orders.length + c.returns.length) + ')', 'chip' + (c.CourierID === cur ? ' on' : '')); b.onclick = () => { cur = c.CourierID; selO.clear(); selR.clear(); drawCouriers(); drawCourier(); }; box.appendChild(b); });
+  }
+  const bucket = () => recv.find(c => c.CourierID === cur);
+
+  function drawCourier() {
+    const c = bucket();
+    $('empty').classList.toggle('hide', !!recv.length); $('cbody').classList.toggle('hide', !c);
+    if (!c) return;
+    const total = c.orders.reduce((a, o) => a + o.cod, 0);
+    $('ageNote').textContent = c.orders.length + ' orders waiting, COD ' + money(total) + (c.expectedDays ? '. ' + c.name + ' usually pays within ' + c.expectedDays + ' days.' : '.');
+    const box = $('olist'); box.textContent = '';
+    c.orders.forEach(o => {
+      const r = el('label', undefined, 'it'), i = el('input'); i.type = 'checkbox'; i.checked = selO.has(o.OrderID);
+      i.onchange = () => { i.checked ? selO.add(o.OrderID) : selO.delete(o.OrderID); calc(); };
+      const m = el('div', undefined, 'm'), t = el('b', o.invoiceNo);
+      if (c.expectedDays && o.age > c.expectedDays) t.append(el('span', 'Overdue ' + o.age + ' days', 'tag bad')); else t.append(el('span', o.age + ' days', 'tag'));
+      m.append(t, el('small', o.customer + '  |  CN ' + (o.cn || '-')), el('small', 'Delivered ' + day(o.delivered)));
+      const a = el('div', undefined, 'amt'); a.append(el('b', money(o.cod)), el('small', 'charges ' + money(o.charge)));
+      r.append(i, m, a); box.appendChild(r);
+    });
+    $('rcard').classList.toggle('hide', !c.returns.length);
+    const rb = $('rlist'); rb.textContent = '';
+    c.returns.forEach(o => {
+      const r = el('label', undefined, 'it'), i = el('input'); i.type = 'checkbox'; i.checked = selR.has(o.OrderID);
+      i.onchange = () => { i.checked ? selR.add(o.OrderID) : selR.delete(o.OrderID); calc(); };
+      const m = el('div', undefined, 'm'); m.append(el('b', o.invoiceNo), el('small', o.customer + '  |  CN ' + (o.cn || '-')), el('small', 'Returned ' + day(o.date)));
+      const a = el('div', undefined, 'amt'); a.appendChild(el('b', '- ' + money(o.charge)));
+      r.append(i, m, a); rb.appendChild(r);
+    });
+    drawAccts(); calc();
+  }
+
+  function drawAccts() {
+    const box = $('accts'); box.textContent = '';
+    if (!accounts.length) { box.textContent = 'No bank or wallet yet. Add one in Setup Lists.'; return; }
+    accounts.forEach(a => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = a.AccountID === acct;
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); acct = i.checked ? a.AccountID : ''; };
+      l.append(i, document.createTextNode(' ' + a.AccountName)); box.appendChild(l);
+    });
+  }
+
+  function figures() {
+    const c = bucket() || { orders: [], returns: [] };
+    const os = c.orders.filter(o => selO.has(o.OrderID)), rs = c.returns.filter(o => selR.has(o.OrderID));
+    const cod = os.reduce((a, o) => a + o.cod, 0), del = os.reduce((a, o) => a + o.charge, 0), ret = rs.reduce((a, o) => a + o.charge, 0);
+    return { count: os.length + rs.length, cod: cod, del: del, ret: ret, expected: Math.round((cod - del - ret) * 100) / 100 };
+  }
+  function calc() {
+    const f = figures(), box = $('sum'); box.textContent = '';
+    [['Selected', f.count + ' items'], ['COD of delivered orders', money(f.cod)], ['Delivery charges', '- ' + money(f.del)], ['Return charges', '- ' + money(f.ret)]].forEach(r => {
+      const d = el('div'); d.append(el('span', r[0]), el('span', r[1])); box.appendChild(d);
+    });
+    const big = el('div', undefined, 'big'); big.append(el('span', 'Expected payment'), el('span', money(f.expected))); box.appendChild(big);
+    const dd = $('diff'), a = $('amt').value.trim();
+    if (!a) { dd.textContent = ''; return; }
+    const diff = Math.round((n(a) - f.expected) * 100) / 100;
+    dd.textContent = diff === 0 ? 'Matches the expected payment.' : 'Difference: ' + (diff > 0 ? '+' : '-') + money(Math.abs(diff)) + (diff > 0 ? ' (more than expected)' : ' (less than expected)');
+    dd.style.color = diff === 0 ? 'var(--ok)' : 'var(--err)';
+  }
+  $('amt').addEventListener('input', calc);
+
+  $('all').onclick = () => { const c = bucket(); if (!c) return; c.orders.forEach(o => selO.add(o.OrderID)); c.returns.forEach(o => selR.add(o.OrderID)); drawCourier(); };
+  $('none').onclick = () => { selO.clear(); selR.clear(); $('matchMsg').textContent = ''; drawCourier(); };
+  $('match').onclick = () => {
+    const c = bucket(); if (!c) return;
+    const list = $('cns').value.split(/[\s,;]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
+    if (!list.length) { $('matchMsg').textContent = 'Paste at least one CN.'; return; }
+    const found = new Set();
+    c.orders.concat(c.returns).forEach(o => { if (o.cn && list.indexOf(o.cn.toLowerCase()) > -1) { (c.orders.indexOf(o) > -1 ? selO : selR).add(o.OrderID); found.add(o.cn.toLowerCase()); } });
+    const missing = list.filter(x => !found.has(x));
+    $('matchMsg').textContent = found.size + ' matched.' + (missing.length ? ' Not found here: ' + missing.join(', ') : '');
+    drawCourier();
+  };
+
+  $('save').onclick = async () => {
+    const c = bucket(), f = figures();
+    if (!c || !f.count) return toast('Tick at least one order.');
+    if (!$('amt').value.trim()) return toast('Enter the amount received.');
+    if (!acct) return toast('Choose where the money was received.');
+    const diff = Math.round((n($('amt').value) - f.expected) * 100) / 100;
+    if (diff !== 0 && !confirm('The amount differs from the expected ' + money(f.expected) + ' by ' + money(Math.abs(diff)) + '. The difference is recorded as a courier adjustment. Continue?')) return;
+    $('save').disabled = true;
+    try {
+      await api('createRemittance', { storeId: sid, courierId: c.CourierID, amountReceived: $('amt').value, date: $('rdate').value, accountId: acct,
+        note: $('note').value, orderIds: Array.from(selO), returnIds: Array.from(selR) });
+      toast('Payment recorded.'); selO.clear(); selR.clear(); $('amt').value = ''; $('note').value = ''; $('cns').value = ''; $('matchMsg').textContent = '';
+      await loadRecv();
+    } catch (e) { toast(e.message); }
+    $('save').disabled = false;
+  };
+
+  /* ---------- History ---------- */
+  async function loadHist() {
+    const box = $('hlist'); box.textContent = 'Loading...';
+    try {
+      const rows = await api('listRemittances', { storeId: sid }); box.textContent = '';
+      if (!rows.length) box.textContent = 'No payments recorded yet.';
+      rows.forEach(r => {
+        const d = el('div', undefined, 'row'), l = el('div'), rt = el('div'); rt.style.textAlign = 'right';
+        l.append(el('b', r.courier + '  |  ' + day(r.date)), el('small', r.orders + ' orders  |  into ' + r.account + (r.note ? '  |  ' + r.note : '')));
+        rt.append(el('b', money(r.received)));
+        if (r.difference) { const s = el('small', 'difference ' + (r.difference > 0 ? '+' : '-') + money(Math.abs(r.difference))); s.style.color = 'var(--err)'; rt.appendChild(s); }
+        d.append(l, rt); box.appendChild(d);
+      });
+    } catch (e) { box.textContent = e.message; }
+  }
+
+  init();
+</script>
+</body>
+</html>

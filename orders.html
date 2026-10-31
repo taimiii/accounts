@@ -60,7 +60,7 @@
 <script>
   if (!Store.token || !can('orders')) location.replace('app.html');
   const $ = id => document.getElementById(id);
-  const STATUSES = ['All', 'Invoiced', 'Dispatched', 'Delivered', 'Returned', 'Refused', 'Cancelled'];
+  const STATUSES = ['All', 'Invoiced', 'Dispatched', 'Delivered', 'Paid', 'Returned', 'Refused', 'Cancelled'];
   const NEXT = { Invoiced: ['Dispatched', 'Cancelled'], Dispatched: ['Delivered', 'Returned', 'Refused'], Delivered: ['Returned'] };
   let status = 'All', rows = [], lists = null, timer = null;
 
