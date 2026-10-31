@@ -46,6 +46,13 @@
       <input id="q" type="text" placeholder="Search product, SKU or vendor" autocomplete="off">
       <div class="btns"><button onclick="location.href='newpurchase.html'">New purchase</button></div>
     </div>
+    <div class="card hide sp" id="adj">
+      <h2 id="adjTitle"></h2>
+      <p class="muted">Use a minus sign for lost, damaged or expired stock (for example -2). Use a plus for extra stock found.</p>
+      <label>Change in quantity</label><input id="adjQty" type="text" inputmode="numeric" autocomplete="off">
+      <label>Reason</label><input id="adjWhy" type="text" autocomplete="off" placeholder="e.g. damaged in packing">
+      <div class="btns"><button id="adjSave">Save adjustment</button><button class="ghost" id="adjCancel">Cancel</button></div>
+    </div>
     <div class="card sp"><div id="list">Loading...</div><div class="total" id="total"></div></div>
   </div>
 </main>
@@ -105,6 +112,8 @@
           d.textContent = 'Batch ' + b.batchNo + '  |  ' + day(b.received) + '  |  ' + b.remaining + ' of ' + b.qtyIn + ' left' +
                           (b.cost !== null ? '  |  cost ' + money(b.cost) : '') + (b.expiry ? '  |  exp ' + day(b.expiry) : '');
           const tg = b.remaining > 0 ? expiryTag(b.expiry) : null; if (tg) d.appendChild(tg);
+          const ab = el('button', 'Adjust', 'ghost'); ab.style.cssText = 'margin-left:8px;padding:2px 10px;font-size:.78rem';
+          ab.onclick = () => openAdjust(p, b); d.appendChild(ab);
           det.appendChild(d);
         });
         const btn = el('button', 'Batches', 'ghost'); btn.onclick = () => det.classList.toggle('hide');
@@ -127,6 +136,21 @@
       if (!rows.length) box.textContent = purchases.length ? 'No match.' : 'No purchases yet. Tap "New purchase".';
     }
   }
+
+  let adjBatch = null;
+  function openAdjust(p, b) {
+    adjBatch = b; $('adjTitle').textContent = 'Adjust: ' + p.name + ' (batch ' + b.batchNo + ', ' + b.remaining + ' left)';
+    $('adjQty').value = ''; $('adjWhy').value = ''; $('adj').classList.remove('hide'); $('adj').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('adjCancel').onclick = () => $('adj').classList.add('hide');
+  $('adjSave').onclick = async () => {
+    $('adjSave').disabled = true;
+    try {
+      await api('adjustStock', { batchId: adjBatch.batchId, qty: $('adjQty').value, reason: $('adjWhy').value });
+      toast('Stock adjusted.'); $('adj').classList.add('hide'); stock = null; await load();
+    } catch (e) { toast(e.message); }
+    $('adjSave').disabled = false;
+  };
 
   if (!sid) $('nostore').classList.remove('hide');
   else { $('main').classList.remove('hide'); drawTabs(); load(); }
