@@ -119,7 +119,7 @@
   function openAction(o, to) {
     const p = $('apanel'); p.textContent = ''; p.classList.remove('hide');
     p.append(el('h2', to + ': ' + o.InvoiceNo), el('p', o.Customer + '  |  COD ' + money(o.COD), 'muted'));
-    let courier = o.CourierID || '', dateEl = null, cnEl = null;
+    let courier = o.CourierID || '', dateEl = null, cnEl = null, chargeEl = null;
 
     if (to === 'Dispatched') {
       p.append(el('label', 'Courier *'));
@@ -136,8 +136,20 @@
       p.append(el('label', 'Delivery date (the date the courier delivered it)'));
       dateEl = el('input'); dateEl.type = 'date'; dateEl.value = new Date().toISOString().slice(0, 10); p.appendChild(dateEl);
     }
+    if (to === 'Delivered' || to === 'Returned' || to === 'Refused') {   // courier charge, suggested from the rate card
+      p.append(el('label', to === 'Delivered' ? 'Courier charges (delivery + COD fee), Rs' : 'Return charge, Rs'));
+      chargeEl = el('input'); chargeEl.type = 'text'; chargeEl.inputMode = 'decimal'; chargeEl.autocomplete = 'off'; chargeEl.placeholder = 'Calculating...';
+      const hint = el('small', '', 'muted'); hint.style.display = 'block'; hint.style.marginTop = '4px';
+      p.append(chargeEl, hint);
+      api('getChargeEstimate', { orderId: o.OrderID }).then(r => {
+        const v = to === 'Delivered' ? r.total : r.returnCharge;
+        chargeEl.placeholder = 'Enter amount';
+        if (v !== '' && v !== null && !chargeEl.value) chargeEl.value = v;
+        hint.textContent = (to === 'Delivered' ? '' : (r.returnRule ? 'Return rule: ' + r.returnRule + '. ' : '')) + r.notes.join(' ');
+      }).catch(() => { chargeEl.placeholder = 'Enter amount'; });
+    }
     if (to === 'Returned' || to === 'Refused' || to === 'Cancelled')
-      p.append(el('p', 'This order will never count as revenue. Stock and courier return charges are handled in the later steps.', 'muted'));
+      p.append(el('p', 'This order will never count as revenue.' + (to === 'Cancelled' ? '' : ' Delivered stock goes back to its batch.'), 'muted'));
 
     const btns = el('div', undefined, 'btns');
     const ok = el('button', 'Confirm ' + to), no = el('button', 'Close', 'ghost');
@@ -145,7 +157,8 @@
     ok.onclick = async () => {
       ok.disabled = true;
       try {
-        await api('setOrderStatus', { orderId: o.OrderID, status: to, courierId: courier, cn: cnEl ? cnEl.value : undefined, date: dateEl ? dateEl.value : undefined });
+        await api('setOrderStatus', { orderId: o.OrderID, status: to, courierId: courier, cn: cnEl ? cnEl.value : undefined, date: dateEl ? dateEl.value : undefined,
+          charge: to === 'Delivered' && chargeEl ? chargeEl.value : undefined, returnCharge: (to === 'Returned' || to === 'Refused') && chargeEl ? chargeEl.value : undefined });
         toast(o.InvoiceNo + ' is now ' + to + '.'); p.classList.add('hide'); await load();
       } catch (e) { toast(e.message); ok.disabled = false; }
     };

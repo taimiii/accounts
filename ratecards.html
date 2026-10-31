@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Courier Rates</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 140px; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  .slab { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 8px; align-items: end; margin-top: 8px; }
+  .slab label { margin: 0 0 2px; font-size: .75rem; }
+  .rm { width: 40px; margin: 0; padding: 10px 0; }
+  .info { font-size: .88rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Courier Rates</b><small>Delivery charge by parcel weight</small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card">
+    <h2>1. Choose courier</h2>
+    <div class="checks" id="couriers">Loading...</div>
+  </div>
+
+  <div class="card hide sp" id="card">
+    <h2 id="title"></h2>
+    <p class="info">Each row says: parcels up to this weight cost this much. Leave the weight empty on the <b>last row</b> for everything heavier. Example: up to 500 g = Rs 180, up to 1000 g = Rs 250, above = Rs 330.</p>
+    <div id="slabs"></div>
+    <div class="btns">
+      <button class="ghost" id="add">+ Add row</button>
+      <button id="save">Save rates</button>
+    </div>
+    <p class="info" style="margin-top:14px">The COD fee % and the return charge rule of each courier are set in <b>Setup Lists → Couriers</b>. Product weights are set in <b>Setup Lists → Products</b>.</p>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !(can('payments') || can('users'))) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let couriers = [], cur = null, slabs = [];
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+
+  async function init() {
+    try { couriers = (await api('getLists')).couriers || []; } catch (e) { $('err').textContent = e.message; $('couriers').textContent = ''; return; }
+    const box = $('couriers'); box.textContent = '';
+    if (!couriers.length) box.textContent = 'No couriers yet. Add them in Setup Lists first.';
+    couriers.forEach(c => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox';
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); if (i.checked) pick(c); else { cur = null; $('card').classList.add('hide'); } };
+      l.append(i, document.createTextNode(' ' + c.CourierName)); box.appendChild(l);
+    });
+  }
+
+  async function pick(c) {
+    cur = c; $('title').textContent = '2. Rates for ' + c.CourierName; $('slabs').textContent = 'Loading...'; $('card').classList.remove('hide');
+    try { slabs = (await api('listRates', { courierId: c.CourierID })).map(x => ({ upTo: x.upTo === null ? '' : x.upTo, charge: x.charge })); }
+    catch (e) { toast(e.message); slabs = []; }
+    if (!slabs.length) slabs = [{ upTo: 500, charge: '' }, { upTo: '', charge: '' }];
+    draw();
+  }
+
+  function draw() {
+    const box = $('slabs'); box.textContent = '';
+    slabs.forEach((r, i) => {
+      const d = el('div', undefined, 'slab'), a = el('div'), b = el('div');
+      a.appendChild(el('label', 'Up to (grams)')); const iu = el('input'); iu.type = 'text'; iu.inputMode = 'numeric'; iu.value = r.upTo; iu.placeholder = 'above (no limit)';
+      iu.oninput = () => r.upTo = iu.value; a.appendChild(iu);
+      b.appendChild(el('label', 'Charge (Rs)')); const ic = el('input'); ic.type = 'text'; ic.inputMode = 'decimal'; ic.value = r.charge;
+      ic.oninput = () => r.charge = ic.value; b.appendChild(ic);
+      const x = el('button', 'x', 'ghost rm'); x.onclick = () => { slabs.splice(i, 1); draw(); };
+      d.append(a, b, x); box.appendChild(d);
+    });
+  }
+  $('add').onclick = () => {
+    // new row goes before the open-ended last row, if there is one
+    const last = slabs[slabs.length - 1];
+    if (last && last.upTo === '') slabs.splice(slabs.length - 1, 0, { upTo: '', charge: '' }); else slabs.push({ upTo: '', charge: '' });
+    draw();
+  };
+  $('save').onclick = async () => {
+    if (!cur) return;
+    if (slabs.some(r => String(r.charge).trim() === '')) return toast('Enter a charge for every row.');
+    $('save').disabled = true;
+    try { await api('saveRates', { courierId: cur.CourierID, slabs: slabs.map(r => ({ upTo: String(r.upTo).trim(), charge: r.charge })) }); toast('Rates saved.'); }
+    catch (e) { toast(e.message); }
+    $('save').disabled = false;
+  };
+
+  init();
+</script>
+</body>
+</html>
