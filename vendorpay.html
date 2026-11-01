@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Vendor Payments</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; } .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row small { display: block; color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .tag.bad { color: var(--err); border-color: var(--err); }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tw { overflow-x: auto; }
+  table.lg { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  table.lg th, table.lg td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+  table.lg th { color: var(--muted); font-size: .78rem; text-transform: uppercase; } table.lg .r { text-align: right; white-space: nowrap; }
+  table.lg tr.b td { font-weight: 700; }
+  @media (max-width: 520px) { .row { flex-direction: column; align-items: stretch; gap: 8px; } .acts button { flex: 1; } .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Vendor Payments</b><small id="sub">What you owe your vendors</small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+
+  <!-- Pay a vendor -->
+  <div class="card hide" id="pay">
+    <h2 id="ptitle"></h2>
+    <div id="pdetail" class="muted"></div>
+    <label>Amount paid (Rs)</label><input id="pamt" type="text" inputmode="decimal" autocomplete="off">
+    <label>Date</label><input id="pdate" type="date">
+    <label>Paid from</label><div class="checks" id="paccts"></div>
+    <label>Note (optional)</label><input id="pnote" type="text" autocomplete="off">
+    <div class="btns"><button id="psave">Record payment</button><button class="ghost" id="pcancel">Cancel</button></div>
+  </div>
+
+  <!-- Ledger -->
+  <div class="card hide sp" id="led">
+    <h2 id="ltitle"></h2>
+    <div class="two"><div><label>From</label><input id="lfrom" type="date"></div><div><label>To</label><input id="lto" type="date"></div></div>
+    <div class="btns"><button id="lgo">Show ledger</button><button class="ghost" id="lxls">Download Excel</button><button class="ghost" id="lclose">Close</button></div>
+    <div class="tw sp" id="lbody"></div>
+  </div>
+
+  <div class="card sp"><div id="list">Loading...</div><p class="muted" id="foot"></p></div>
+</main>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('payments')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let vendors = [], accounts = [], acct = '', payV = null, ledV = null, ledData = null;
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
+  const ymd = d => d.toLocaleDateString('en-CA');
+
+  async function load() {
+    $('err').textContent = '';
+    try {
+      accounts = (await api('getLists')).accounts || [];
+      vendors = await api('listPayables');
+      render();
+    } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
+  }
+
+  function render() {
+    const box = $('list'); box.textContent = '';
+    let owed = 0;
+    vendors.forEach(v => {
+      owed += v.balance > 0 ? v.balance : 0;
+      const row = el('div', undefined, 'row'), left = el('div'), t = el('b', v.name);
+      if (v.overdue) t.append(el('span', 'Overdue', 'tag bad'));
+      left.append(t, el('small', (v.terms ? 'Terms: ' + v.terms : 'No payment terms set') + (v.phone ? '  |  ' + v.phone : '')));
+      const nextDue = v.outstanding.filter(o => o.due).sort((a, b) => new Date(a.due) - new Date(b.due))[0];
+      if (nextDue) left.appendChild(el('small', 'Oldest due: ' + day(nextDue.due) + ' (' + money(nextDue.outstanding) + ')'));
+      const rt = el('div', undefined, 'acts'); rt.style.flexDirection = 'column'; rt.style.alignItems = 'flex-end';
+      const bal = el('b', v.balance < 0 ? money(-v.balance) + ' advance' : money(v.balance)); bal.style.color = v.balance > 0 ? 'var(--err)' : 'inherit';
+      const bt = el('div', undefined, 'acts'), pb = el('button', 'Pay', 'ghost'), lb = el('button', 'Ledger', 'ghost');
+      pb.onclick = () => openPay(v); lb.onclick = () => openLedger(v); bt.append(pb, lb); rt.append(bal, bt);
+      row.append(left, rt); box.appendChild(row);
+    });
+    if (!vendors.length) box.textContent = 'No vendors yet. Add them in Setup Lists, then enter purchases.';
+    $('foot').textContent = vendors.length ? 'Total you owe: ' + money(owed) : '';
+  }
+
+  /* ---------- Pay ---------- */
+  function openPay(v) {
+    payV = v; acct = '';
+    $('ptitle').textContent = 'Pay ' + v.name;
+    const d = $('pdetail'); d.textContent = '';
+    d.append(el('div', 'You owe: ' + money(Math.max(0, v.balance))));
+    if (v.openingOut > 0) d.appendChild(el('div', 'Opening balance still unpaid: ' + money(v.openingOut)));
+    v.outstanding.slice(0, 6).forEach(o => d.appendChild(el('div', day(o.date) + (o.ref ? '  ' + o.ref : '') + ': ' + money(o.outstanding) + (o.overdue ? '  (overdue)' : ''))));
+    $('pamt').value = ''; $('pnote').value = ''; $('pdate').value = ymd(new Date());
+    const box = $('paccts'); box.textContent = '';
+    if (!accounts.length) box.textContent = 'No bank or wallet yet. Add one in Setup Lists.';
+    accounts.forEach(a => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox';
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); acct = i.checked ? a.AccountID : ''; };
+      l.append(i, document.createTextNode(' ' + a.AccountName)); box.appendChild(l);
+    });
+    $('pay').classList.remove('hide'); $('pay').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('pcancel').onclick = () => $('pay').classList.add('hide');
+  $('psave').onclick = async () => {
+    if (!acct) return toast('Choose the bank or wallet you paid from.');
+    const amt = n($('pamt').value);
+    if (payV.balance > 0 && amt > payV.balance && !confirm('This is more than you owe (' + money(payV.balance) + '). The extra is kept as an advance to the vendor. Continue?')) return;
+    $('psave').disabled = true;
+    try {
+      await api('createVendorPayment', { vendorId: payV.VendorID, amount: $('pamt').value, date: $('pdate').value, accountId: acct, note: $('pnote').value });
+      toast('Payment recorded.'); $('pay').classList.add('hide'); await load();
+    } catch (e) { toast(e.message); }
+    $('psave').disabled = false;
+  };
+
+  /* ---------- Ledger ---------- */
+  function openLedger(v) {
+    ledV = v; $('ltitle').textContent = 'Ledger: ' + v.name;
+    const t = new Date(), f = new Date(); f.setDate(f.getDate() - 90);
+    $('lfrom').value = ymd(f); $('lto').value = ymd(t); $('led').classList.remove('hide'); $('led').scrollIntoView({ behavior: 'smooth' }); showLedger();
+  }
+  async function showLedger() {
+    const body = $('lbody'); body.textContent = 'Loading...';
+    try {
+      ledData = await api('getVendorLedger', { vendorId: ledV.VendorID, from: $('lfrom').value, to: $('lto').value });
+      body.textContent = '';
+      const t = el('table', undefined, 'lg'), hr = el('tr');
+      [['Date', ''], ['Details', ''], ['Purchases', 'r'], ['Payments', 'r'], ['Balance', 'r']].forEach(c => hr.appendChild(el('th', c[0], c[1])));
+      const th = el('thead'); th.appendChild(hr); t.appendChild(th);
+      const tb = el('tbody');
+      const add = (cells, cls) => { const r = el('tr', undefined, cls || ''); cells.forEach((c, i) => r.appendChild(el('td', c, i > 1 ? 'r' : ''))); tb.appendChild(r); };
+      add([$('lfrom').value, 'Opening balance', '', '', money(ledData.opening)], 'b');
+      ledData.lines.forEach(l => add([day(l.date), l.desc, l.purchase ? money(l.purchase) : '', l.payment ? money(l.payment) : '', money(l.balance)]));
+      add(['', 'Closing balance', money(ledData.totalPurchases), money(ledData.totalPayments), money(ledData.closing)], 'b');
+      t.appendChild(tb); body.appendChild(t);
+    } catch (e) { body.textContent = e.message; }
+  }
+  $('lgo').onclick = showLedger;
+  $('lclose').onclick = () => $('led').classList.add('hide');
+  $('lxls').onclick = async () => {
+    if (!can('export')) return toast('Downloading is not enabled for your account.');
+    if (typeof XLSX === 'undefined') return toast('Excel library did not load. Check your internet.');
+    if (!ledData) return;
+    try { await api('logExport', { what: 'vendor ledger', rows: ledData.lines.length }); } catch (e) { return toast(e.message); }
+    const rows = [{ Date: $('lfrom').value, Details: 'Opening balance', Purchases: '', Payments: '', Balance: ledData.opening }]
+      .concat(ledData.lines.map(l => ({ Date: day(l.date), Details: l.desc, Purchases: l.purchase || '', Payments: l.payment || '', Balance: l.balance })))
+      .concat([{ Date: '', Details: 'Closing balance', Purchases: ledData.totalPurchases, Payments: ledData.totalPayments, Balance: ledData.closing }]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Ledger');
+    XLSX.writeFile(wb, 'ledger-' + ledV.name.replace(/\W+/g, '-') + '-' + ymd(new Date()) + '.xlsx');
+  };
+
+  load();
+</script>
+</body>
+</html>
