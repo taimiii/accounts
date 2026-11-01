@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Expenses</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  input[type=date], input[type=month] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
+  .sum div { display: flex; justify-content: space-between; padding: 3px 0; }
+  .sum .big { font-weight: 700; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; } .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row small { display: block; color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  @media (max-width: 520px) { .row { flex-direction: column; align-items: stretch; gap: 8px; } .acts button { flex: 1; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Expenses</b><small id="sub"></small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card hide" id="nostore">
+    <h2>Select a store first</h2>
+    <p class="muted">Expenses are recorded inside one store. Choose your working store on the dashboard.</p>
+    <div class="btns"><button onclick="location.href='app.html'">Go to dashboard</button></div>
+  </div>
+
+  <div id="main" class="hide">
+    <div class="card">
+      <label style="margin-top:0">Month</label><input id="mon" type="month">
+      <div class="sum sp" id="sum"></div>
+      <p class="muted" id="lockMsg"></p>
+      <div class="btns"><button id="add">Add expense</button></div>
+    </div>
+
+    <div class="card hide sp" id="form">
+      <h2 id="ftitle">Add expense</h2>
+      <label>Expense type</label><div class="checks" id="types"></div>
+      <label>Amount (Rs)</label><input id="amt" type="text" inputmode="decimal" autocomplete="off">
+      <label>Date</label><input id="date" type="date">
+      <label>Paid from</label><div class="checks" id="accts"></div>
+      <div class="checks"><label><input type="checkbox" id="shared"> Shared by all stores</label></div>
+      <label>Note (optional)</label><input id="note" type="text" autocomplete="off">
+      <div class="btns"><button id="save">Save expense</button><button class="ghost" id="cancel">Cancel</button></div>
+    </div>
+
+    <div class="card sp"><div id="list">Loading...</div></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('expenses')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  const sid = Store.storeId;
+  let types = [], accounts = [], data = null, editId = '', pickType = '', pickAcct = '';
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleDateString('en-CA') : ''; };
+
+  async function init() {
+    if (!sid) { $('nostore').classList.remove('hide'); return; }
+    $('main').classList.remove('hide'); $('sub').textContent = Store.storeName;
+    $('mon').value = new Date().toLocaleDateString('en-CA').slice(0, 7);
+    try { const L = await api('getLists'); types = L.expenseTypes || []; accounts = L.accounts || []; } catch (e) { $('err').textContent = e.message; }
+    $('mon').onchange = load; load();
+  }
+
+  async function load() {
+    $('err').textContent = '';
+    try { data = await api('listExpenses', { storeId: sid, month: $('mon').value }); } catch (e) { $('err').textContent = e.message; return; }
+    const s = $('sum'); s.textContent = '';
+    [['Direct expenses', data.direct], ['Indirect expenses', data.indirect]].forEach(r => { const d = el('div'); d.append(el('span', r[0]), el('span', money(r[1]))); s.appendChild(d); });
+    const big = el('div', undefined, 'big'); big.append(el('span', 'Total'), el('span', money(data.total))); s.appendChild(big);
+    $('lockMsg').textContent = data.locked ? 'This month is locked. Expenses cannot be added, changed or deleted.' : '';
+    $('add').classList.toggle('hide', data.locked);
+    const box = $('list'); box.textContent = '';
+    data.rows.forEach(r => {
+      const row = el('div', undefined, 'row'), left = el('div'), t = el('b', r.type);
+      t.append(el('span', r.group, 'tag')); if (r.shared) t.append(el('span', 'Shared', 'tag'));
+      left.append(t, el('small', day(r.date) + '  |  ' + r.account + (r.note ? '  |  ' + r.note : '')));
+      const rt = el('div', undefined, 'acts'); rt.style.flexDirection = 'column'; rt.style.alignItems = 'flex-end';
+      rt.appendChild(el('b', money(r.amount)));
+      if (!data.locked) {
+        const bt = el('div', undefined, 'acts'), e = el('button', 'Edit', 'ghost'), d = el('button', 'Delete', 'ghost');
+        e.onclick = () => openForm(r); d.onclick = () => del(r); bt.append(e, d); rt.appendChild(bt);
+      }
+      row.append(left, rt); box.appendChild(row);
+    });
+    if (!data.rows.length) box.textContent = 'No expenses in this month.';
+  }
+
+  function tick(box, opts, current, onPick) {
+    box.textContent = '';
+    if (!opts.length) { box.textContent = 'Nothing available. Add items in Setup Lists.'; return; }
+    opts.forEach(o => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = o.id === current;
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); onPick(i.checked ? o.id : ''); };
+      l.append(i, document.createTextNode(' ' + o.label)); box.appendChild(l);
+    });
+  }
+
+  function openForm(r) {
+    editId = r ? r.id : ''; pickType = r ? r.typeId : ''; pickAcct = r ? r.accountId : '';
+    $('ftitle').textContent = r ? 'Edit expense' : 'Add expense';
+    tick($('types'), types.map(t => ({ id: t.ExpenseTypeID, label: t.ExpenseType + ' (' + t.Group + ')' })), pickType, v => pickType = v);
+    tick($('accts'), accounts.map(a => ({ id: a.AccountID, label: a.AccountName })), pickAcct, v => pickAcct = v);
+    $('amt').value = r ? r.amount : ''; $('note').value = r ? r.note : ''; $('shared').checked = r ? r.shared : false;
+    $('date').value = r ? day(r.date) : new Date().toLocaleDateString('en-CA');
+    $('form').classList.remove('hide'); $('form').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('add').onclick = () => openForm(null);
+  $('cancel').onclick = () => $('form').classList.add('hide');
+  $('save').onclick = async () => {
+    $('save').disabled = true;
+    try {
+      await api('saveExpense', { expenseId: editId, storeId: sid, shared: $('shared').checked, typeId: pickType, accountId: pickAcct,
+        amount: $('amt').value, date: $('date').value, note: $('note').value });
+      toast('Expense saved.'); $('form').classList.add('hide'); await load();
+    } catch (e) { toast(e.message); }
+    $('save').disabled = false;
+  };
+  async function del(r) {
+    if (!confirm('Delete this expense (' + r.type + ', ' + money(r.amount) + ')?')) return;
+    try { await api('deleteExpense', { expenseId: r.id }); toast('Expense deleted.'); await load(); } catch (e) { toast(e.message); }
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Bank & Cash</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; } .row small { display: block; color: var(--muted); }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .tw { overflow-x: auto; }
+  table.lg { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  table.lg th, table.lg td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+  table.lg th { color: var(--muted); font-size: .78rem; text-transform: uppercase; } table.lg .r { text-align: right; white-space: nowrap; }
+  table.lg tr.b td { font-weight: 700; }
+  .neg { color: var(--err); } .pos { color: var(--ok); }
+  @media (max-width: 520px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Bank &amp; Cash</b><small>Balances of all your accounts</small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+  <div class="card"><div id="list">Loading...</div><p class="muted" id="total"></p>
+    <div class="btns"><button id="tr" class="hide">Transfer between accounts</button><button class="ghost hide" id="cp">Owner capital / drawing</button></div>
+  </div>
+
+  <div class="card hide sp" id="tform">
+    <h2>Transfer</h2>
+    <label>From</label><div class="checks" id="tfrom"></div>
+    <label>To</label><div class="checks" id="tto"></div>
+    <label>Amount (Rs)</label><input id="tamt" type="text" inputmode="decimal" autocomplete="off">
+    <label>Date</label><input id="tdate" type="date">
+    <label>Note (optional)</label><input id="tnote" type="text" autocomplete="off">
+    <div class="btns"><button id="tsave">Save transfer</button><button class="ghost" id="tcancel">Cancel</button></div>
+  </div>
+
+  <div class="card hide sp" id="cform">
+    <h2>Owner capital / drawing</h2>
+    <p class="muted">Capital in is money you put into the business. A drawing is money you take out for personal use. Neither is an expense.</p>
+    <label>Type</label><div class="checks" id="ctype"></div>
+    <label>Account</label><div class="checks" id="cacct"></div>
+    <label>Amount (Rs)</label><input id="camt" type="text" inputmode="decimal" autocomplete="off">
+    <label>Date</label><input id="cdate" type="date">
+    <label>Note (optional)</label><input id="cnote" type="text" autocomplete="off">
+    <div class="btns"><button id="csave">Save</button><button class="ghost" id="ccancel">Cancel</button></div>
+  </div>
+
+  <div class="card hide sp" id="stm">
+    <h2 id="stitle"></h2>
+    <div class="two"><div><label>From</label><input id="sfrom" type="date"></div><div><label>To</label><input id="sto" type="date"></div></div>
+    <div class="btns"><button id="sgo">Show statement</button><button class="ghost" id="sclose">Close</button></div>
+    <div class="tw sp" id="sbody"></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !(can('payments') || can('reports'))) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let accts = [], curA = null, tf = '', tt = '', cType = '', cAcct = '';
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleDateString('en-CA') : ''; };
+
+  function tick(box, opts, current, onPick) {
+    box.textContent = '';
+    opts.forEach(o => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = o.id === current;
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); onPick(i.checked ? o.id : ''); };
+      l.append(i, document.createTextNode(' ' + o.label)); box.appendChild(l);
+    });
+  }
+
+  async function load() {
+    $('err').textContent = '';
+    try {
+      const r = await api('listAccounts'); accts = r.accounts; const box = $('list'); box.textContent = '';
+      accts.forEach(a => {
+        const row = el('div', undefined, 'row'), l = el('div'), rt = el('div'); rt.style.textAlign = 'right';
+        l.append(el('b', a.name), el('small', a.type + (a.active ? '' : '  |  inactive')));
+        const b = el('b', money(a.balance)); b.className = a.balance < 0 ? 'neg' : '';
+        const s = el('button', 'Statement', 'ghost'); s.style.marginTop = '4px'; s.onclick = () => openStatement(a);
+        rt.append(b, el('br'), s); row.append(l, rt); box.appendChild(row);
+      });
+      if (!accts.length) box.textContent = 'No accounts yet. Add them in Setup Lists.';
+      $('total').textContent = accts.length ? 'Total in all accounts: ' + money(r.total) : '';
+    } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
+    $('tr').classList.toggle('hide', !can('payments')); $('cp').classList.toggle('hide', !can('users'));
+  }
+
+  /* ---------- Transfer ---------- */
+  $('tr').onclick = () => {
+    tf = tt = ''; const opts = accts.filter(a => a.active).map(a => ({ id: a.AccountID, label: a.name + '  (' + money(a.balance) + ')' }));
+    tick($('tfrom'), opts, '', v => tf = v); tick($('tto'), opts, '', v => tt = v);
+    $('tamt').value = ''; $('tnote').value = ''; $('tdate').value = new Date().toLocaleDateString('en-CA');
+    $('tform').classList.remove('hide'); $('tform').scrollIntoView({ behavior: 'smooth' });
+  };
+  $('tcancel').onclick = () => $('tform').classList.add('hide');
+  $('tsave').onclick = async () => {
+    $('tsave').disabled = true;
+    try { await api('createTransfer', { fromId: tf, toId: tt, amount: $('tamt').value, date: $('tdate').value, note: $('tnote').value });
+      toast('Transfer saved.'); $('tform').classList.add('hide'); await load(); } catch (e) { toast(e.message); }
+    $('tsave').disabled = false;
+  };
+
+  /* ---------- Capital / drawing ---------- */
+  $('cp').onclick = () => {
+    cType = cAcct = '';
+    tick($('ctype'), [{ id: 'Owner capital in', label: 'Capital in (I put money in)' }, { id: 'Owner drawing', label: 'Drawing (I take money out)' }], '', v => cType = v);
+    tick($('cacct'), accts.filter(a => a.active).map(a => ({ id: a.AccountID, label: a.name })), '', v => cAcct = v);
+    $('camt').value = ''; $('cnote').value = ''; $('cdate').value = new Date().toLocaleDateString('en-CA');
+    $('cform').classList.remove('hide'); $('cform').scrollIntoView({ behavior: 'smooth' });
+  };
+  $('ccancel').onclick = () => $('cform').classList.add('hide');
+  $('csave').onclick = async () => {
+    $('csave').disabled = true;
+    try { await api('createCapital', { type: cType, accountId: cAcct, amount: $('camt').value, date: $('cdate').value, note: $('cnote').value });
+      toast('Saved.'); $('cform').classList.add('hide'); await load(); } catch (e) { toast(e.message); }
+    $('csave').disabled = false;
+  };
+
+  /* ---------- Statement ---------- */
+  function openStatement(a) {
+    curA = a; $('stitle').textContent = 'Statement: ' + a.name;
+    const t = new Date(), f = new Date(); f.setDate(f.getDate() - 30);
+    $('sfrom').value = f.toLocaleDateString('en-CA'); $('sto').value = t.toLocaleDateString('en-CA');
+    $('stm').classList.remove('hide'); $('stm').scrollIntoView({ behavior: 'smooth' }); showStatement();
+  }
+  async function showStatement() {
+    const body = $('sbody'); body.textContent = 'Loading...';
+    try {
+      const r = await api('getAccountStatement', { accountId: curA.AccountID, from: $('sfrom').value, to: $('sto').value });
+      body.textContent = '';
+      const t = el('table', undefined, 'lg'), hr = el('tr');
+      [['Date', ''], ['Details', ''], ['In / Out', 'r'], ['Balance', 'r']].forEach(c => hr.appendChild(el('th', c[0], c[1])));
+      const th = el('thead'); th.appendChild(hr); t.appendChild(th);
+      const tb = el('tbody');
+      const add = (cells, cls, tone) => { const tr = el('tr', undefined, cls || ''); cells.forEach((c, i) => { const td = el('td', c, i > 1 ? 'r' : ''); if (i === 2 && tone) td.className += ' ' + tone; tr.appendChild(td); }); tb.appendChild(tr); };
+      add([$('sfrom').value, 'Opening balance', '', money(r.opening)], 'b');
+      r.lines.forEach(l => add([day(l.date), l.desc, (l.amount > 0 ? '+' : '-') + money(Math.abs(l.amount)), money(l.balance)], '', l.amount > 0 ? 'pos' : 'neg'));
+      add(['', 'Closing balance', '', money(r.closing)], 'b');
+      t.appendChild(tb); body.appendChild(t);
+    } catch (e) { body.textContent = e.message; }
+  }
+  $('sgo').onclick = showStatement; $('sclose').onclick = () => $('stm').classList.add('hide');
+
+  load();
+</script>
+</body>
+</html>
