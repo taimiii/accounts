@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Reports</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 120px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { width: auto; margin: 0; padding: 8px 16px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 99px; font-weight: 500; font-size: .9rem; }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
+  input[type=checkbox] { width: auto; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .tw { overflow-x: auto; }
+  table.rp { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  table.rp th, table.rp td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+  table.rp th { color: var(--muted); font-size: .78rem; text-transform: uppercase; white-space: nowrap; }
+  table.rp .r { text-align: right; white-space: nowrap; }
+  table.rp tr.h td { font-weight: 700; background: var(--bg); } table.rp tr.t td { font-weight: 700; border-top: 2px solid var(--text); }
+  table.rp tr.i td:first-child { padding-left: 22px; }
+  .pos { color: var(--ok); } .neg { color: var(--err); }
+  h3.rt { margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 12px; }
+  @media (max-width: 520px) { .two { grid-template-columns: 1fr; } }
+  @media print {
+    .noprint, header { display: none !important; }
+    body { background: #fff; color: #111; } .card { border: 0; padding: 0; }
+    table.rp th, table.rp td { border-bottom: 1px solid #bbb; color: #111; } @page { margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+<header class="noprint">
+  <div class="who"><b>Reports</b><small>Profit, sales and purchases</small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err noprint" id="err"></p>
+  <div class="card noprint">
+    <div class="chips" id="tabs"></div>
+    <label style="margin-top:0">Store</label><div class="checks" id="scope"></div>
+    <div class="two"><div><label>From</label><input id="from" type="date"></div><div><label>To</label><input id="to" type="date"></div></div>
+    <div class="btns">
+      <button class="ghost" id="thisM">This month</button><button class="ghost" id="lastM">Last month</button>
+    </div>
+    <div class="btns"><button id="go">Show report</button><button class="ghost hide" id="xls">Download Excel</button><button class="ghost hide" id="prn">Print</button></div>
+  </div>
+
+  <div class="card sp hide" id="out">
+    <h3 class="rt" id="rtitle"></h3><p class="sub" id="rsub"></p>
+    <div class="chips noprint hide" id="views"></div>
+    <div class="tw" id="body"></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('reports')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let tab = 'Profit & Loss', scope = '', stores = [], view = 'By invoice line', result = null, rows = [];
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const money = v => v === null || v === undefined ? '' : 'Rs ' + Number(v).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+  const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleDateString('en-CA') : ''; };
+  const ymd = d => d.toLocaleDateString('en-CA');
+
+  async function init() {
+    try { stores = (await api('getLists')).stores || []; } catch (e) { $('err').textContent = e.message; return; }
+    scope = stores.some(s => s.StoreID === Store.storeId) ? Store.storeId : (stores[0] ? stores[0].StoreID : '');
+    drawScope(); drawTabs(); setMonth(0);
+    $('xls').classList.toggle('hide', !can('export')); $('prn').classList.remove('hide');
+  }
+  function drawScope() {
+    const box = $('scope'); box.textContent = '';
+    const opts = stores.map(s => ({ id: s.StoreID, label: s.StoreName })); if (stores.length > 1) opts.push({ id: 'ALL', label: 'All stores combined' });
+    opts.forEach(o => {
+      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = o.id === scope;
+      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); scope = i.checked ? o.id : ''; };
+      l.append(i, document.createTextNode(' ' + o.label)); box.appendChild(l);
+    });
+  }
+  function drawTabs() {
+    const box = $('tabs'); box.textContent = '';
+    ['Profit & Loss', 'Sales', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); $('out').classList.add('hide'); }; box.appendChild(b); });
+  }
+  function setMonth(back) {
+    const d = new Date(), a = new Date(d.getFullYear(), d.getMonth() - back, 1), b = back ? new Date(d.getFullYear(), d.getMonth() - back + 1, 0) : d;
+    $('from').value = ymd(a); $('to').value = ymd(b);
+  }
+  $('thisM').onclick = () => setMonth(0); $('lastM').onclick = () => setMonth(1);
+
+  function table(head, body, rightFrom) {
+    const t = el('table', undefined, 'rp'), hr = el('tr');
+    head.forEach((h, i) => hr.appendChild(el('th', h, i >= rightFrom ? 'r' : '')));
+    const th = el('thead'); th.appendChild(hr); t.appendChild(th);
+    const tb = el('tbody'); body.forEach(r => { const tr = el('tr', undefined, r.cls || ''); r.cells.forEach((c, i) => { const td = el('td', c, i >= rightFrom ? 'r' : ''); if (r.tone && i === r.cells.length - 1) td.className += ' ' + r.tone; tr.appendChild(td); }); tb.appendChild(tr); });
+    t.appendChild(tb); return t;
+  }
+
+  async function run() {
+    if (!scope) return toast('Choose a store.');
+    $('err').textContent = ''; $('go').disabled = true;
+    const p = { storeId: scope, from: $('from').value, to: $('to').value };
+    try {
+      const action = tab === 'Profit & Loss' ? 'getPL' : tab === 'Sales' ? 'getSalesStatement' : 'getPurchaseStatement';
+      result = await api(action, p);
+      const name = scope === 'ALL' ? 'All stores' : (stores.find(s => s.StoreID === scope) || {}).StoreName;
+      $('rtitle').textContent = tab + ' - ' + name; $('rsub').textContent = p.from + '  to  ' + p.to;
+      $('out').classList.remove('hide'); draw();
+    } catch (e) { toast(e.message); }
+    $('go').disabled = false;
+  }
+  $('go').onclick = run;
+
+  function draw() {
+    const body = $('body'); body.textContent = ''; const views = $('views'); views.textContent = ''; views.classList.add('hide'); rows = [];
+    if (tab === 'Profit & Loss') return drawPL(body);
+    if (tab === 'Sales') return drawSales(body, views);
+    drawPurchases(body);
+  }
+
+  function drawPL(body) {
+    const r = result, b = [], sign = v => v < 0 ? 'neg' : 'pos';
+    const add = (label, amount, cls, tone) => { b.push({ cells: [label, money(amount)], cls: cls, tone: tone }); rows.push({ Item: label.trim(), Amount: amount }); };
+    add('Sales (after discounts)', r.sales); add('Less: sales returns', -r.returns);
+    add('Net revenue', r.netRevenue, 't'); add('Cost of goods sold', -r.cogs);
+    add('Gross profit  (' + r.grossMargin + '%)', r.grossProfit, 't', sign(r.grossProfit));
+    b.push({ cells: ['Direct expenses', ''], cls: 'h' }); r.direct.lines.forEach(l => add('   ' + l.label, -l.amount, 'i')); add('Total direct expenses', -r.direct.total, 't');
+    b.push({ cells: ['Indirect expenses', ''], cls: 'h' }); r.indirect.lines.forEach(l => add('   ' + l.label, -l.amount, 'i')); add('Total indirect expenses', -r.indirect.total, 't');
+    add('NET PROFIT  (' + r.netMargin + '%)', r.netProfit, 't', sign(r.netProfit));
+    body.appendChild(table(['', 'Amount'], b, 1));
+    if (r.sharedNotIncluded) body.appendChild(el('p', 'Shared expenses of ' + money(r.sharedNotIncluded) + ' are not included in this store. They appear in "All stores combined".', 'sub'));
+  }
+
+  function drawSales(body, views) {
+    const L = result.lines, T = result.totals, hasCost = T.cogs !== null;
+    views.classList.remove('hide');
+    ['By invoice line', 'By product'].forEach(v => { const bt = el('button', v, 'chip' + (v === view ? ' on' : '')); bt.onclick = () => { view = v; draw(); }; views.appendChild(bt); });
+    if (view === 'By product') {
+      const g = {};
+      L.forEach(l => { const k = l.product; const x = g[k] || (g[k] = { product: k, qty: 0, amount: 0, cogs: 0, profit: 0 }); x.qty += l.qty; x.amount += l.amount; x.cogs += l.cogs || 0; x.profit += l.profit || 0; });
+      const list = Object.keys(g).map(k => g[k]).sort((a, b) => b.amount - a.amount);
+      const head = ['Product', 'Qty', 'Sales'].concat(hasCost ? ['COGS', 'Profit', 'Margin'] : []);
+      const bd = list.map(x => { const c = [x.product, x.qty, money(x.amount)]; if (hasCost) c.push(money(x.cogs), money(x.profit), (x.amount ? Math.round(x.profit / x.amount * 1000) / 10 : 0) + '%'); return { cells: c }; });
+      const tot = ['Total', T.qty, money(T.amount)]; if (hasCost) tot.push(money(T.cogs), money(T.profit), (T.amount ? Math.round(T.profit / T.amount * 1000) / 10 : 0) + '%');
+      bd.push({ cells: tot, cls: 't' }); body.appendChild(table(head, bd, 1));
+      list.forEach(x => rows.push(Object.assign({ Product: x.product, Qty: x.qty, Sales: Math.round(x.amount * 100) / 100 }, hasCost ? { COGS: Math.round(x.cogs * 100) / 100, Profit: Math.round(x.profit * 100) / 100 } : {})));
+      return;
+    }
+    const head = ['Date', 'Invoice', 'Product', 'Qty', 'Price', 'Amount'].concat(hasCost ? ['COGS', 'Profit'] : []);
+    const bd = L.map(l => { const c = [day(l.date), l.invoice, l.product, l.qty, money(l.price), money(l.amount)]; if (hasCost) c.push(money(l.cogs), money(l.profit)); return { cells: c }; });
+    const tot = ['Total', '', '', T.qty, '', money(T.amount)]; if (hasCost) tot.push(money(T.cogs), money(T.profit)); bd.push({ cells: tot, cls: 't' });
+    body.appendChild(table(head, bd, 3));
+    L.forEach(l => rows.push(Object.assign({ Date: day(l.date), Invoice: l.invoice, Store: l.store, SKU: l.sku, Product: l.product, Qty: l.qty, Price: l.price, Amount: l.amount }, hasCost ? { COGS: l.cogs, Profit: l.profit } : {})));
+  }
+
+  function drawPurchases(body) {
+    const L = result.lines, T = result.totals;
+    const bd = L.map(l => ({ cells: [day(l.date), l.vendor, l.ref, l.product, l.batch, l.qty, money(l.cost), money(l.amount)] }));
+    bd.push({ cells: ['Total', '', '', '', '', T.qty, '', money(T.amount)], cls: 't' });
+    body.appendChild(table(['Date', 'Vendor', 'Ref', 'Product', 'Batch', 'Qty', 'Cost', 'Amount'], bd, 5));
+    L.forEach(l => rows.push({ Date: day(l.date), Vendor: l.vendor, Ref: l.ref, Store: l.store, Product: l.product, Batch: l.batch, Qty: l.qty, Cost: l.cost, Amount: l.amount }));
+  }
+
+  $('xls').onclick = async () => {
+    if (typeof XLSX === 'undefined') return toast('Excel library did not load. Check your internet.');
+    if (!rows.length) return toast('Show a report first.');
+    try { await api('logExport', { what: tab, rows: rows.length }); } catch (e) { return toast(e.message); }
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), tab.replace(/\W+/g, ' ').trim().slice(0, 30));
+    XLSX.writeFile(wb, tab.replace(/\W+/g, '-') + '-' + $('from').value + '-to-' + $('to').value + '.xlsx');
+  };
+  $('prn').onclick = () => { if ($('out').classList.contains('hide')) return toast('Show a report first.'); window.print(); };
+
+  init();
+</script>
+</body>
+</html>
