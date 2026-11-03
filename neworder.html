@@ -107,6 +107,8 @@
         <div id="advBox" class="hide"><label>Advance Amount</label><input id="adv" type="text" inputmode="decimal" value="0"></div>
         <label>Courier</label>
         <select id="courier"><option value="">Select courier</option></select>
+        <label>Order Source</label>
+        <select id="source"><option value="">Select source</option></select>
       </div>
     </div>
 
@@ -158,6 +160,7 @@
     if (!L.stores.some(s => s.StoreID === sid)) { Store.setStore('', ''); $('nostore').classList.remove('hide'); return; }
     P = L.products.filter(p => p.StoreID === sid);
     L.couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; $('courier').appendChild(o); });
+    (L.sources || []).forEach(c => { const o = el('option', c.SourceName); o.value = c.SourceID; $('source').appendChild(o); });
     $('bdate').value = new Date().toLocaleDateString('en-CA');
     if (editId) { await loadForEdit(); return; }
     $('sheet').classList.remove('hide');
@@ -179,7 +182,7 @@
     $('cname').value = c.name; $('a1').value = lines[0] || ''; $('a2').value = lines.slice(1).join(', ');
     $('ccity').value = c.city; $('cemail').value = c.email; $('phone').value = c.phone; lastPhone = c.phone;
     $('invno').value = o.invoiceNo; $('bdate').value = new Date(o.date).toLocaleDateString('en-CA');
-    $('terms').value = o.terms; $('courier').value = o.courierId; $('dpct').value = o.discountPercent;
+    $('terms').value = o.terms; $('courier').value = o.courierId; $('source').value = o.sourceId || ''; $('dpct').value = o.discountPercent;
     $('adv').value = o.advance; $('note').value = o.note;
     $('rows').textContent = ''; rows = [];
     o.items.forEach(i => addRow({ pid: i.productId, sku: i.sku, desc: i.desc, qty: i.qty, price: i.price }));
@@ -312,7 +315,7 @@
                     address: [$('a1').value.trim(), $('a2').value.trim()].filter(Boolean).join('\n') },
         items: filled.map(x => ({ productId: x.pid, qty: x.qty, unitPrice: x.price })),
         discountPercent: c.pct, billingTerms: c.t, billingDate: $('bdate').value, advance: c.adv,
-        courierId: $('courier').value, invoiceNote: $('note').value, overrideReason: $('reason').value
+        courierId: $('courier').value, sourceId: $('source').value, invoiceNote: $('note').value, overrideReason: $('reason').value
       });
       lastData = await api('getInvoiceData', { orderId: r.orderId });
       $('sheet').classList.add('hide'); $('done').classList.remove('hide');

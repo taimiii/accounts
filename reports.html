@@ -89,7 +89,7 @@
   }
   function drawTabs() {
     const box = $('tabs'); box.textContent = '';
-    ['Profit & Loss', 'Sales', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); $('out').classList.add('hide'); }; box.appendChild(b); });
+    ['Profit & Loss', 'Sales', 'Sales by City', 'Sales by Channel', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); $('out').classList.add('hide'); }; box.appendChild(b); });
   }
   function setMonth(back) {
     const d = new Date(), a = new Date(d.getFullYear(), d.getMonth() - back, 1), b = back ? new Date(d.getFullYear(), d.getMonth() - back + 1, 0) : d;
@@ -110,7 +110,8 @@
     $('err').textContent = ''; $('go').disabled = true;
     const p = { storeId: scope, from: $('from').value, to: $('to').value };
     try {
-      const action = tab === 'Profit & Loss' ? 'getPL' : tab === 'Sales' ? 'getSalesStatement' : 'getPurchaseStatement';
+      const action = tab === 'Profit & Loss' ? 'getPL' : tab === 'Sales' ? 'getSalesStatement' : tab === 'Purchases' ? 'getPurchaseStatement' : 'getSalesBreakdown';
+      if (action === 'getSalesBreakdown') p.by = tab === 'Sales by City' ? 'city' : 'source';
       result = await api(action, p);
       const name = scope === 'ALL' ? 'All stores' : (stores.find(s => s.StoreID === scope) || {}).StoreName;
       $('rtitle').textContent = tab + ' - ' + name; $('rsub').textContent = p.from + '  to  ' + p.to;
@@ -124,6 +125,7 @@
     const body = $('body'); body.textContent = ''; const views = $('views'); views.textContent = ''; views.classList.add('hide'); rows = [];
     if (tab === 'Profit & Loss') return drawPL(body);
     if (tab === 'Sales') return drawSales(body, views);
+    if (tab === 'Sales by City' || tab === 'Sales by Channel') return drawBreakdown(body);
     drawPurchases(body);
   }
 
@@ -160,6 +162,20 @@
     const tot = ['Total', '', '', T.qty, '', money(T.amount)]; if (hasCost) tot.push(money(T.cogs), money(T.profit)); bd.push({ cells: tot, cls: 't' });
     body.appendChild(table(head, bd, 3));
     L.forEach(l => rows.push(Object.assign({ Date: day(l.date), Invoice: l.invoice, Store: l.store, SKU: l.sku, Product: l.product, Qty: l.qty, Price: l.price, Amount: l.amount }, hasCost ? { COGS: l.cogs, Profit: l.profit } : {})));
+  }
+
+  // Sales grouped by city or by order source (channel)
+  function drawBreakdown(body) {
+    const R = result.rows, T = result.totals, hasCost = !result.hideCost, label = tab === 'Sales by City' ? 'City' : 'Channel';
+    const head = [label, 'Orders', 'Units', 'Sales', 'Avg order'].concat(hasCost ? ['COGS', 'Profit', 'Margin'] : []).concat(['Returned']);
+    const line = x => { const c = [x.name, x.orders, x.units, money(x.sales), money(x.avg)]; if (hasCost) c.push(money(x.cogs), money(x.profit), (x.margin === null ? '' : x.margin + '%')); c.push(x.returned); return c; };
+    const bd = R.map(x => ({ cells: line(x) }));
+    bd.push({ cells: line(Object.assign({ name: 'Total' }, T)), cls: 't' });
+    body.appendChild(table(head, bd, 1));
+    if (!R.length) body.appendChild(el('p', 'No delivered orders in this period.', 'sub'));
+    else body.appendChild(el('p', 'Sales = delivered orders in the period (after discounts). Returned = orders returned or refused in the period.' + (tab === 'Sales by Channel' ? ' Orders without a source are shown as (Not set).' : ' The city is the customer city saved on the customer.'), 'sub'));
+    R.forEach(x => { const o = {}; o[label] = x.name; o.Orders = x.orders; o.Units = x.units; o.Sales = x.sales; o['Avg order'] = x.avg;
+      if (hasCost) { o.COGS = x.cogs; o.Profit = x.profit; o['Margin %'] = x.margin; } o.Returned = x.returned; rows.push(o); });
   }
 
   function drawPurchases(body) {

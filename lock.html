@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Month Lock & Backup</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .hide { display: none; } .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; } .row small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+  .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
+  .tag.on { color: var(--ok); border-color: var(--ok); } .tag.bad { color: var(--err); border-color: var(--err); }
+  ul.chk { margin: 8px 0; padding-left: 18px; } ul.chk li { margin: 4px 0; }
+  a.lk { color: var(--brand); }
+</style>
+</head>
+<body>
+<header>
+  <div class="who"><b>Month Lock &amp; Backup</b><small>Owner only</small></div>
+  <button class="ghost" onclick="location.href='app.html'">Back</button>
+</header>
+
+<main class="wrap">
+  <p class="err" id="err"></p>
+
+  <div class="card">
+    <h2>Month lock</h2>
+    <p class="muted">A locked month cannot be changed: no orders, expenses, purchases or stock changes dated in it. Courier payments can still be recorded. Lock a month once you have checked its profit.</p>
+    <div id="months">Loading...</div>
+  </div>
+
+  <div class="card hide sp" id="lockCard">
+    <h2 id="lockTitle"></h2>
+    <div id="lockList"></div>
+    <div class="btns"><button id="lockGo">Lock this month</button><button class="ghost" id="lockNo">Cancel</button></div>
+  </div>
+
+  <div class="card sp">
+    <h2>Backups</h2>
+    <p class="muted" id="bstat">Loading...</p>
+    <div class="btns"><button id="bnow">Back up now</button></div>
+    <div id="blist" class="sp"></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+  if (!Store.token || !can('users')) location.replace('app.html');
+  const $ = id => document.getElementById(id);
+  let pick = '';
+
+  function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4500); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+  const when = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''; };
+
+  async function loadMonths() {
+    try {
+      const list = await api('listMonths'), box = $('months'); box.textContent = '';
+      list.forEach(m => {
+        const row = el('div', undefined, 'row'), l = el('div'), t = el('b', m.month);
+        if (m.locked) t.append(el('span', 'Locked', 'tag on')); else if (m.current) t.append(el('span', 'Current month', 'tag')); else t.append(el('span', 'Open', 'tag bad'));
+        l.appendChild(t); if (m.locked) l.appendChild(el('small', 'Locked by ' + m.by + ' on ' + when(m.at)));
+        row.appendChild(l);
+        if (!m.current) {
+          const b = el('button', m.locked ? 'Unlock' : 'Lock', 'ghost'); b.onclick = () => m.locked ? unlock(m.month) : openLock(m.month); row.appendChild(b);
+        }
+        box.appendChild(row);
+      });
+    } catch (e) { $('err').textContent = e.message; $('months').textContent = ''; }
+  }
+
+  async function openLock(month) {
+    pick = month; $('lockTitle').textContent = 'Lock ' + month + '?';
+    const box = $('lockList'); box.textContent = 'Checking...'; $('lockCard').classList.remove('hide'); $('lockCard').scrollIntoView({ behavior: 'smooth' });
+    try {
+      const c = await api('getMonthChecklist', { month: month }); box.textContent = '';
+      const ul = el('ul', undefined, 'chk');
+      [[c.notDelivered, 'orders still Invoiced or Dispatched (not delivered yet)'], [c.unpaid, 'delivered orders still waiting for courier payment'], [c.pendingReturnCharges, 'returns whose charge is not deducted yet']]
+        .forEach(x => ul.appendChild(el('li', (x[0] ? x[0] + ' ' : 'No ') + x[1])));
+      box.append(el('p', 'Before you lock, here is what is still open in this month:', 'muted'), ul,
+        el('p', 'This is only a reminder. Courier payments can still be recorded after the lock. A backup is made automatically when you lock.', 'muted'));
+    } catch (e) { box.textContent = e.message; }
+  }
+  $('lockNo').onclick = () => $('lockCard').classList.add('hide');
+  $('lockGo').onclick = async () => {
+    $('lockGo').disabled = true; $('lockGo').textContent = 'Locking...';
+    try { await api('lockMonth', { month: pick }); toast(pick + ' is locked.'); $('lockCard').classList.add('hide'); await loadMonths(); await loadBackups(); }
+    catch (e) { toast(e.message); }
+    $('lockGo').disabled = false; $('lockGo').textContent = 'Lock this month';
+  };
+
+  async function unlock(month) {
+    const reason = prompt('Why do you need to unlock ' + month + '? (this is written to the activity log)');
+    if (!reason) return;
+    try { await api('unlockMonth', { month: month, reason: reason }); toast(month + ' is unlocked. Lock it again when you finish.'); await loadMonths(); } catch (e) { toast(e.message); }
+  }
+
+  async function loadBackups() {
+    try {
+      const r = await api('listBackups');
+      $('bstat').textContent = r.weeklyOn ? 'Weekly automatic backup is ON (Sunday, around 3 am). The newest ' + r.keep + ' copies are kept in your Google Drive folder "Accounts Backups".'
+        : 'Weekly automatic backup is OFF. In Apps Script, run the function setupWeeklyBackup once to turn it on.';
+      const box = $('blist'); box.textContent = '';
+      r.files.slice(0, 12).forEach(f => { const row = el('div', undefined, 'row'), l = el('div'); l.append(el('b', f.name), el('small', when(f.created)));
+        const a = el('a', 'Open', 'lk'); a.href = f.url; a.target = '_blank'; a.rel = 'noopener'; row.append(l, a); box.appendChild(row); });
+      if (!r.files.length) box.textContent = 'No backups yet.';
+    } catch (e) { $('bstat').textContent = 'Backups are not set up yet. In Apps Script, run setupWeeklyBackup once (' + e.message + ')'; }
+  }
+  $('bnow').onclick = async () => {
+    $('bnow').disabled = true; $('bnow').textContent = 'Backing up...';
+    try { const r = await api('backupNow'); toast('Backup saved: ' + r.name); await loadBackups(); } catch (e) { toast(e.message); }
+    $('bnow').disabled = false; $('bnow').textContent = 'Back up now';
+  };
+
+  loadMonths(); loadBackups();
+</script>
+</body>
+</html>
