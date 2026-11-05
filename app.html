@@ -14,6 +14,12 @@
   .hbtns { display: flex; gap: 8px; }
   .cur { font-weight: 700; color: var(--brand); }
   .tile.off { opacity: .55; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .stat small { display: block; color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; }
+  .stat b { display: block; font-size: 1.25rem; margin-top: 4px; }
+  .stat span { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+  .stat.bad b { color: var(--err); }
 </style>
 </head>
 <body>
@@ -41,6 +47,8 @@
     <p class="muted" id="storeMsg">Loading your stores...</p>
     <div class="checks" id="stores"></div>
   </div>
+
+  <div class="stats hide" id="stats"></div>
 
   <div class="grid sp" id="menu"></div>
 </main>
@@ -108,7 +116,7 @@
       i.onchange = () => {
         box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; });
         Store.setStore(i.checked ? s.StoreID : '', i.checked ? s.StoreName : '');
-        drawStores(stores); drawMenu();
+        drawStores(stores); drawMenu(); loadStats();
         if (i.checked) toast('Working store: ' + s.StoreName);
       };
       l.append(i, document.createTextNode(' ' + s.StoreName)); box.appendChild(l);
@@ -146,7 +154,31 @@
     $('chg').disabled = false;
   };
 
-  drawMenu(); loadStores();
+  /* ---------- Daily numbers for the working store ---------- */
+  const rs = v => 'Rs ' + Math.round(Number(v || 0)).toLocaleString('en-PK');
+  async function loadStats() {
+    const box = $('stats'); box.textContent = '';
+    if (!Store.storeId) { box.classList.add('hide'); return; }
+    try {
+      const d = await api('getDashboard', { storeId: Store.storeId });
+      const cards = [];
+      const add = (label, value, sub, bad, page) => cards.push({ label, value, sub, bad, page });
+      if (d.todayOrders !== undefined) { add("Today's orders", d.todayOrders, rs(d.todaySales) + ' sales', false, 'orders.html'); add('To dispatch', d.toDispatch, d.inTransit + ' on the way', false, 'orders.html'); }
+      if (d.courierDue !== undefined) { add('Courier owes you', rs(d.courierDue), d.courierDueCount + ' orders' + (d.courierOverdue ? ', ' + d.courierOverdue + ' overdue' : ''), d.courierOverdue > 0, 'courierpay.html'); }
+      if (d.vendorOwed !== undefined) add('You owe vendors', rs(d.vendorOwed), '', false, 'vendorpay.html');
+      if (d.lowStock !== undefined) add('Low stock', d.lowStock + d.outOfStock, d.outOfStock + ' out of stock', d.outOfStock > 0, 'stock.html');
+      if (d.cashTotal !== undefined) add('Bank + cash', rs(d.cashTotal), 'all accounts', false, 'money.html');
+      if (d.monthSales !== undefined) { add('This month sales', rs(d.monthSales), '', false, 'reports.html'); add('This month profit', rs(d.monthProfit), '', d.monthProfit < 0, 'reports.html'); }
+      cards.forEach(c => {
+        const x = document.createElement('div'); x.className = 'stat' + (c.bad ? ' bad' : ''); x.style.cursor = 'pointer';
+        const l = document.createElement('small'); l.textContent = c.label; const v = document.createElement('b'); v.textContent = c.value; const s = document.createElement('span'); s.textContent = c.sub;
+        x.append(l, v, s); x.onclick = () => { location.href = c.page; }; box.appendChild(x);
+      });
+      box.classList.toggle('hide', !cards.length);
+    } catch (e) { box.classList.add('hide'); }
+  }
+
+  drawMenu(); loadStores().then(loadStats);
 </script>
 </body>
 </html>

@@ -50,6 +50,7 @@
       <label>Amount (Rs)</label><input id="amt" type="text" inputmode="decimal" autocomplete="off">
       <label>Date</label><input id="date" type="date">
       <label>Paid from</label><div class="checks" id="accts"></div>
+      <label>Order source (optional, for ad spend)</label><div class="checks" id="srcs"></div>
       <div class="checks"><label><input type="checkbox" id="shared"> Shared by all stores</label></div>
       <label>Note (optional)</label><input id="note" type="text" autocomplete="off">
       <div class="btns"><button id="save">Save expense</button><button class="ghost" id="cancel">Cancel</button></div>
@@ -66,7 +67,7 @@
   if (!Store.token || !can('expenses')) location.replace('app.html');
   const $ = id => document.getElementById(id);
   const sid = Store.storeId;
-  let types = [], accounts = [], data = null, editId = '', pickType = '', pickAcct = '';
+  let types = [], accounts = [], sources = [], data = null, editId = '', pickType = '', pickAcct = '', pickSrc = '';
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -77,7 +78,7 @@
     if (!sid) { $('nostore').classList.remove('hide'); return; }
     $('main').classList.remove('hide'); $('sub').textContent = Store.storeName;
     $('mon').value = new Date().toLocaleDateString('en-CA').slice(0, 7);
-    try { const L = await api('getLists'); types = L.expenseTypes || []; accounts = L.accounts || []; } catch (e) { $('err').textContent = e.message; }
+    try { const L = await api('getLists'); types = L.expenseTypes || []; accounts = L.accounts || []; sources = L.sources || []; } catch (e) { $('err').textContent = e.message; }
     $('mon').onchange = load; load();
   }
 
@@ -93,7 +94,7 @@
     data.rows.forEach(r => {
       const row = el('div', undefined, 'row'), left = el('div'), t = el('b', r.type);
       t.append(el('span', r.group, 'tag')); if (r.shared) t.append(el('span', 'Shared', 'tag'));
-      left.append(t, el('small', day(r.date) + '  |  ' + r.account + (r.note ? '  |  ' + r.note : '')));
+      left.append(t, el('small', day(r.date) + '  |  ' + r.account + (r.source ? '  |  ' + r.source : '') + (r.note ? '  |  ' + r.note : '')));
       const rt = el('div', undefined, 'acts'); rt.style.flexDirection = 'column'; rt.style.alignItems = 'flex-end';
       rt.appendChild(el('b', money(r.amount)));
       if (!data.locked) {
@@ -116,10 +117,11 @@
   }
 
   function openForm(r) {
-    editId = r ? r.id : ''; pickType = r ? r.typeId : ''; pickAcct = r ? r.accountId : '';
+    editId = r ? r.id : ''; pickType = r ? r.typeId : ''; pickAcct = r ? r.accountId : ''; pickSrc = r ? (r.sourceId || '') : '';
     $('ftitle').textContent = r ? 'Edit expense' : 'Add expense';
     tick($('types'), types.map(t => ({ id: t.ExpenseTypeID, label: t.ExpenseType + ' (' + t.Group + ')' })), pickType, v => pickType = v);
     tick($('accts'), accounts.map(a => ({ id: a.AccountID, label: a.AccountName })), pickAcct, v => pickAcct = v);
+    tick($('srcs'), sources.map(x => ({ id: x.SourceID, label: x.SourceName })), pickSrc, v => pickSrc = v);
     $('amt').value = r ? r.amount : ''; $('note').value = r ? r.note : ''; $('shared').checked = r ? r.shared : false;
     $('date').value = r ? day(r.date) : new Date().toLocaleDateString('en-CA');
     $('form').classList.remove('hide'); $('form').scrollIntoView({ behavior: 'smooth' });
@@ -129,7 +131,7 @@
   $('save').onclick = async () => {
     $('save').disabled = true;
     try {
-      await api('saveExpense', { expenseId: editId, storeId: sid, shared: $('shared').checked, typeId: pickType, accountId: pickAcct,
+      await api('saveExpense', { expenseId: editId, storeId: sid, shared: $('shared').checked, typeId: pickType, accountId: pickAcct, sourceId: pickSrc,
         amount: $('amt').value, date: $('date').value, note: $('note').value });
       toast('Expense saved.'); $('form').classList.add('hide'); await load();
     } catch (e) { toast(e.message); }

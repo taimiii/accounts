@@ -89,7 +89,7 @@
   }
   function drawTabs() {
     const box = $('tabs'); box.textContent = '';
-    ['Profit & Loss', 'Sales', 'Sales by City', 'Sales by Channel', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); $('out').classList.add('hide'); }; box.appendChild(b); });
+    ['Profit & Loss', 'Sales', 'Sales by City', 'Sales by Channel', 'Ads & Channels', 'Couriers', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); $('out').classList.add('hide'); }; box.appendChild(b); });
   }
   function setMonth(back) {
     const d = new Date(), a = new Date(d.getFullYear(), d.getMonth() - back, 1), b = back ? new Date(d.getFullYear(), d.getMonth() - back + 1, 0) : d;
@@ -110,7 +110,7 @@
     $('err').textContent = ''; $('go').disabled = true;
     const p = { storeId: scope, from: $('from').value, to: $('to').value };
     try {
-      const action = tab === 'Profit & Loss' ? 'getPL' : tab === 'Sales' ? 'getSalesStatement' : tab === 'Purchases' ? 'getPurchaseStatement' : 'getSalesBreakdown';
+      const action = { 'Profit & Loss': 'getPL', 'Sales': 'getSalesStatement', 'Purchases': 'getPurchaseStatement', 'Ads & Channels': 'getMarketing', 'Couriers': 'getCourierPerformance' }[tab] || 'getSalesBreakdown';
       if (action === 'getSalesBreakdown') p.by = tab === 'Sales by City' ? 'city' : 'source';
       result = await api(action, p);
       const name = scope === 'ALL' ? 'All stores' : (stores.find(s => s.StoreID === scope) || {}).StoreName;
@@ -126,6 +126,8 @@
     if (tab === 'Profit & Loss') return drawPL(body);
     if (tab === 'Sales') return drawSales(body, views);
     if (tab === 'Sales by City' || tab === 'Sales by Channel') return drawBreakdown(body);
+    if (tab === 'Ads & Channels') return drawMarketing(body);
+    if (tab === 'Couriers') return drawCouriers(body);
     drawPurchases(body);
   }
 
@@ -176,6 +178,32 @@
     else body.appendChild(el('p', 'Sales = delivered orders in the period (after discounts). Returned = orders returned or refused in the period.' + (tab === 'Sales by Channel' ? ' Orders without a source are shown as (Not set).' : ' The city is the customer city saved on the customer.'), 'sub'));
     R.forEach(x => { const o = {}; o[label] = x.name; o.Orders = x.orders; o.Units = x.units; o.Sales = x.sales; o['Avg order'] = x.avg;
       if (hasCost) { o.COGS = x.cogs; o.Profit = x.profit; o['Margin %'] = x.margin; } o.Returned = x.returned; rows.push(o); });
+  }
+
+  const pc = v => v === null || v === undefined ? '-' : v + '%';
+  const nz = v => v === null || v === undefined ? '-' : v;
+
+  // Ad spend (expenses that have an order source) against the orders of each channel
+  function drawMarketing(body) {
+    const R = result.rows, T = result.totals;
+    const line = x => [x.name, x.placed, x.delivered, x.returned, money(x.sales), money(x.spend), x.costPerOrder === null ? '-' : money(x.costPerOrder),
+      x.costPerDelivered === null ? '-' : money(x.costPerDelivered), x.roas === null ? '-' : x.roas + 'x', money(x.profitAfterAds)];
+    const bd = R.map(x => ({ cells: line(x) })); bd.push({ cells: line(Object.assign({ name: 'Total' }, T)), cls: 't' });
+    body.appendChild(table(['Channel', 'Orders', 'Delivered', 'Returned', 'Sales', 'Ad spend', 'Cost / order', 'Cost / delivered', 'ROAS', 'Profit after ads'], bd, 1));
+    body.appendChild(el('p', 'Ad spend = expenses where you chose an Order source. Orders = placed in the period. ROAS = sales divided by ad spend. Profit after ads = sales minus cost of goods minus ad spend.', 'sub'));
+    R.forEach(x => rows.push({ Channel: x.name, Orders: x.placed, Delivered: x.delivered, Returned: x.returned, Sales: x.sales, 'Ad spend': x.spend,
+      'Cost per order': x.costPerOrder, 'Cost per delivered': x.costPerDelivered, ROAS: x.roas, 'Profit after ads': x.profitAfterAds }));
+  }
+
+  // Delivery and return rates, speed, and money still owed by each courier
+  function drawCouriers(body) {
+    const R = result.rows;
+    const bd = R.map(x => ({ cells: [x.name, x.delivered, x.returned, pc(x.deliveryRate), pc(x.returnRate), nz(x.avgDeliveryDays), nz(x.avgPayDays), money(x.charges + x.retCharges), x.pending + (x.overdue ? ' (' + x.overdue + ' overdue)' : ''), money(x.pendingAmt)] }));
+    body.appendChild(table(['Courier', 'Delivered', 'Returned', 'Delivery rate', 'Return rate', 'Avg days to deliver', 'Avg days to pay', 'Charges', 'Waiting for payment', 'Owed now'], bd, 1));
+    if (!R.length) body.appendChild(el('p', 'No courier activity in this period.', 'sub'));
+    else body.appendChild(el('p', 'Delivered and Returned are counted in the period. Waiting for payment and Owed now show today\'s position. Days to deliver = order date to delivery date.', 'sub'));
+    R.forEach(x => rows.push({ Courier: x.name, Delivered: x.delivered, Returned: x.returned, 'Delivery rate %': x.deliveryRate, 'Return rate %': x.returnRate,
+      'Avg days to deliver': x.avgDeliveryDays, 'Avg days to pay': x.avgPayDays, Charges: x.charges, 'Return charges': x.retCharges, 'Waiting for payment': x.pending, 'Owed now': x.pendingAmt }));
   }
 
   function drawPurchases(body) {
