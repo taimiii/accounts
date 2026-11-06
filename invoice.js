@@ -129,7 +129,7 @@ const Invoice = (function () {
     }
 
     const tot = h('div', 'inv-totals');
-    tot.append(row('SUBTOTAL', money(d.subtotal)), row('DISCOUNT %', (d.discPct || 0) + '%'), row('DISCOUNT', money(d.discount)));
+    tot.append(row('SUBTOTAL', money(d.subtotal)), row('DISCOUNT %', (d.discPct || 0) + '%'), row('DISCOUNT', money(d.discount)), row('DELIVERY CHARGES', d.delivery > 0 ? money(d.delivery) : 'Free'));
     tot.appendChild(row('TOTAL', money(d.total), 'inv-total'));
     if (d.advance > 0) { tot.append(row('Advance Amount', money(d.advance)), row('Balance Due', money(Math.max(0, d.total - d.advance)))); }
     root.appendChild(tot);

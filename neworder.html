@@ -123,6 +123,8 @@
       <div class="trow s10"><span>SUBTOTAL</span><span id="tsub">0</span></div>
       <div class="trow s10"><span>DISCOUNT %</span><input id="dpct" type="text" inputmode="decimal" value="0"></div>
       <div class="trow s10"><span>DISCOUNT</span><span id="tdisc">0</span></div>
+      <div class="trow s10"><span>DELIVERY CHARGES</span><input id="del" type="text" inputmode="decimal" value="0"></div>
+      <small class="info" id="delHint"></small>
       <div class="trow s15"><span>TOTAL</span><span id="ttot">0</span></div>
       <small class="info" id="collect"></small>
     </div>
@@ -147,6 +149,7 @@
   const sid = Store.storeId;
   const editId = new URLSearchParams(location.search).get('edit') || '';
   let L = null, P = [], rows = [], riskTimer = null, lastPhone = '', prevTerms = 'Cash On Delivery', lastData = null, frozen = false;
+  let delManual = false, rule = { free: 0, fee: 0 };   // the store's shipping rule
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -159,6 +162,7 @@
     try { L = await api('getLists'); } catch (e) { $('err').textContent = e.message; return; }
     if (!L.stores.some(s => s.StoreID === sid)) { Store.setStore('', ''); $('nostore').classList.remove('hide'); return; }
     P = L.products.filter(p => p.StoreID === sid);
+    const st = L.stores.find(x => x.StoreID === sid) || {}; rule = { free: n(st.FreeDeliveryAbove), fee: n(st.DeliveryCharge) };
     L.couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; $('courier').appendChild(o); });
     (L.sources || []).forEach(c => { const o = el('option', c.SourceName); o.value = c.SourceID; $('source').appendChild(o); });
     $('bdate').value = new Date().toLocaleDateString('en-CA');
@@ -182,7 +186,7 @@
     $('cname').value = c.name; $('a1').value = lines[0] || ''; $('a2').value = lines.slice(1).join(', ');
     $('ccity').value = c.city; $('cemail').value = c.email; $('phone').value = c.phone; lastPhone = c.phone;
     $('invno').value = o.invoiceNo; $('bdate').value = new Date(o.date).toLocaleDateString('en-CA');
-    $('terms').value = o.terms; $('courier').value = o.courierId; $('source').value = o.sourceId || ''; $('dpct').value = o.discountPercent;
+    $('terms').value = o.terms; $('courier').value = o.courierId; $('source').value = o.sourceId || ''; $('dpct').value = o.discountPercent; $('del').value = o.deliveryCharge; delManual = true;
     $('adv').value = o.advance; $('note').value = o.note;
     $('rows').textContent = ''; rows = [];
     o.items.forEach(i => addRow({ pid: i.productId, sku: i.sku, desc: i.desc, qty: i.qty, price: i.price }));
@@ -190,7 +194,7 @@
     applyTerms();
     if (o.frozen) {   // paid / returned / refused / cancelled: only details can change
       frozen = true;
-      document.querySelectorAll('#rows input, #rows button, #addRow, #terms, #dpct, #adv').forEach(x => x.disabled = true);
+      document.querySelectorAll('#rows input, #rows button, #addRow, #terms, #dpct, #adv, #del').forEach(x => x.disabled = true);
       $('custInfo').textContent = 'This invoice is ' + o.status + ': products and amounts are locked. You can still change the details above.';
     }
     $('sheet').classList.remove('hide'); $('save').disabled = false; totals();
@@ -276,13 +280,17 @@
   function calc() {
     const sub = rows.reduce((a, r) => a + r.qty * r.price, 0);
     const pct = Math.min(100, Math.max(0, n($('dpct').value)));
-    const disc = Math.round(sub * pct) / 100, total = sub - disc, t = $('terms').value;
+    const disc = Math.round(sub * pct) / 100, t = $('terms').value, after = sub - disc;
+    // Shipping rule: free from the set amount, otherwise the delivery charge. Typing in the field overrides it.
+    if (!delManual) $('del').value = (t === 'Zero Payment' || after <= 0 || (rule.free > 0 && after >= rule.free)) ? 0 : rule.fee;
+    const del = t === 'Zero Payment' ? 0 : Math.max(0, n($('del').value)), total = after + del;
     const adv = t === 'Advanced Cash' ? Math.min(total, Math.max(0, n($('adv').value))) : 0;
-    return { sub: sub, pct: pct, disc: disc, total: total, adv: adv, cod: total - adv, t: t };
+    return { sub: sub, pct: pct, disc: disc, del: del, total: total, adv: adv, cod: total - adv, t: t };
   }
   function totals() {
     const c = calc();
     $('tsub').textContent = money(c.sub); $('tdisc').textContent = money(c.disc); $('ttot').textContent = money(c.total);
+    $('delHint').textContent = rule.free > 0 ? 'Free delivery on orders of ' + money(rule.free) + ' or more, otherwise ' + money(rule.fee) + '. You can change the amount.' : '';
     $('collect').textContent = c.t === 'Advanced Cash' ? 'Advance received: ' + money(c.adv) + '.  To collect on delivery: ' + money(c.cod)
       : c.t === 'Zero Payment' ? 'Free order. Nothing to collect.' : 'To collect on delivery: ' + money(c.cod);
   }
@@ -297,6 +305,7 @@
   }
   $('terms').onchange = applyTerms;
   ['dpct', 'adv'].forEach(id => $(id).addEventListener('input', totals));
+  $('del').addEventListener('input', () => { delManual = true; totals(); });
 
   /* ---------- Create order, then the print / PDF popup ---------- */
   $('save').onclick = async () => {
@@ -314,7 +323,7 @@
         customer: { name: $('cname').value, city: $('ccity').value, email: $('cemail').value,
                     address: [$('a1').value.trim(), $('a2').value.trim()].filter(Boolean).join('\n') },
         items: filled.map(x => ({ productId: x.pid, qty: x.qty, unitPrice: x.price })),
-        discountPercent: c.pct, billingTerms: c.t, billingDate: $('bdate').value, advance: c.adv,
+        discountPercent: c.pct, deliveryCharge: c.del, billingTerms: c.t, billingDate: $('bdate').value, advance: c.adv,
         courierId: $('courier').value, sourceId: $('source').value, invoiceNote: $('note').value, overrideReason: $('reason').value
       });
       lastData = await api('getInvoiceData', { orderId: r.orderId });

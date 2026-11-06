@@ -156,26 +156,34 @@
 
   /* ---------- Daily numbers for the working store ---------- */
   const rs = v => 'Rs ' + Math.round(Number(v || 0)).toLocaleString('en-PK');
+  const note = (text, onclick) => { const x = document.createElement('div'); x.className = 'stat'; x.style.gridColumn = '1 / -1'; x.textContent = text; if (onclick) { x.style.cursor = 'pointer'; x.onclick = onclick; } return x; };
+
   async function loadStats() {
-    const box = $('stats'); box.textContent = '';
-    if (!Store.storeId) { box.classList.add('hide'); return; }
+    const box = $('stats'); box.textContent = ''; box.classList.remove('hide');
+    if (!Store.storeId) { box.appendChild(note("Select your working store above to see today's numbers.")); return; }
+    const sid = Store.storeId; box.appendChild(note("Loading today's numbers..."));
     try {
-      const d = await api('getDashboard', { storeId: Store.storeId });
-      const cards = [];
-      const add = (label, value, sub, bad, page) => cards.push({ label, value, sub, bad, page });
+      const d = await api('getDashboard', { storeId: sid });
+      if (sid !== Store.storeId) return;   // the store was changed while loading
+      box.textContent = '';
+      const cards = [], add = (label, value, sub, bad, page) => cards.push({ label, value, sub, bad, page });
       if (d.todayOrders !== undefined) { add("Today's orders", d.todayOrders, rs(d.todaySales) + ' sales', false, 'orders.html'); add('To dispatch', d.toDispatch, d.inTransit + ' on the way', false, 'orders.html'); }
-      if (d.courierDue !== undefined) { add('Courier owes you', rs(d.courierDue), d.courierDueCount + ' orders' + (d.courierOverdue ? ', ' + d.courierOverdue + ' overdue' : ''), d.courierOverdue > 0, 'courierpay.html'); }
+      if (d.courierDue !== undefined) add('Couriers will pay you', rs(d.courierDue), d.courierDueCount + ' delivered orders waiting, after courier charges' + (d.courierOverdue ? ' (' + d.courierOverdue + ' overdue)' : ''), d.courierOverdue > 0, 'courierpay.html');
       if (d.vendorOwed !== undefined) add('You owe vendors', rs(d.vendorOwed), '', false, 'vendorpay.html');
       if (d.lowStock !== undefined) add('Low stock', d.lowStock + d.outOfStock, d.outOfStock + ' out of stock', d.outOfStock > 0, 'stock.html');
       if (d.cashTotal !== undefined) add('Bank + cash', rs(d.cashTotal), 'all accounts', false, 'money.html');
-      if (d.monthSales !== undefined) { add('This month sales', rs(d.monthSales), '', false, 'reports.html'); add('This month profit', rs(d.monthProfit), '', d.monthProfit < 0, 'reports.html'); }
+      if (d.monthSales !== undefined) add('This month sales', rs(d.monthSales), '', false, 'reports.html');
+      if (d.monthProfit !== undefined) add('This month profit', rs(d.monthProfit), 'after expenses of ' + rs(d.monthExpenses), d.monthProfit < 0, 'reports.html');
       cards.forEach(c => {
         const x = document.createElement('div'); x.className = 'stat' + (c.bad ? ' bad' : ''); x.style.cursor = 'pointer';
         const l = document.createElement('small'); l.textContent = c.label; const v = document.createElement('b'); v.textContent = c.value; const s = document.createElement('span'); s.textContent = c.sub;
         x.append(l, v, s); x.onclick = () => { location.href = c.page; }; box.appendChild(x);
       });
-      box.classList.toggle('hide', !cards.length);
-    } catch (e) { box.classList.add('hide'); }
+      if (!cards.length) box.appendChild(note('No numbers are enabled for your role.'));
+    } catch (e) {
+      if (sid !== Store.storeId) return;
+      box.textContent = ''; box.appendChild(note('Could not load the numbers (' + e.message + '). Tap here to try again.', loadStats));
+    }
   }
 
   drawMenu(); loadStores().then(loadStats);

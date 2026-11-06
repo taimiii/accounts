@@ -151,9 +151,26 @@
       const tb = el('tbody');
       const add = (cells, cls) => { const r = el('tr', undefined, cls || ''); cells.forEach((c, i) => r.appendChild(el('td', c, i > 1 ? 'r' : ''))); tb.appendChild(r); };
       add([$('lfrom').value, 'Opening balance', '', '', money(ledData.opening)], 'b');
-      ledData.lines.forEach(l => add([day(l.date), l.desc, l.purchase ? money(l.purchase) : '', l.payment ? money(l.payment) : '', money(l.balance)]));
+      ledData.lines.forEach(l => {
+        add([day(l.date), l.desc, l.purchase ? money(l.purchase) : '', l.payment ? money(l.payment) : '', money(l.balance)]);
+        (l.items || []).forEach(i => {   // what was bought on this purchase
+          const r = el('tr'); r.appendChild(el('td', ''));
+          const d = el('td', '   - ' + i.product + ':  ' + i.qty + ' units @ ' + money(i.cost) + ' = ' + money(i.amount)); d.style.cssText = 'color:var(--muted);font-size:.85rem';
+          r.appendChild(d); for (let k = 0; k < 3; k++) r.appendChild(el('td', '', 'r')); tb.appendChild(r);
+        });
+      });
       add(['', 'Closing balance', money(ledData.totalPurchases), money(ledData.totalPayments), money(ledData.closing)], 'b');
       t.appendChild(tb); body.appendChild(t);
+      if (ledData.summary && ledData.summary.length) {   // units bought per product in this period
+        body.appendChild(el('h2', 'Units purchased by product')).style.marginTop = '20px';
+        const t2 = el('table', undefined, 'lg'), h2 = el('tr');
+        [['Product', ''], ['Units', 'r'], ['Amount', 'r']].forEach(c => h2.appendChild(el('th', c[0], c[1])));
+        const th2 = el('thead'); th2.appendChild(h2); t2.appendChild(th2); const tb2 = el('tbody');
+        let q = 0, am = 0;
+        ledData.summary.forEach(x => { q += x.qty; am += x.amount; const r = el('tr'); r.append(el('td', x.product), el('td', x.qty, 'r'), el('td', money(x.amount), 'r')); tb2.appendChild(r); });
+        const r = el('tr', undefined, 'b'); r.append(el('td', 'Total'), el('td', q, 'r'), el('td', money(am), 'r')); tb2.appendChild(r);
+        t2.appendChild(tb2); body.appendChild(t2);
+      }
     } catch (e) { body.textContent = e.message; }
   }
   $('lgo').onclick = showLedger;
@@ -163,10 +180,15 @@
     if (typeof XLSX === 'undefined') return toast('Excel library did not load. Check your internet.');
     if (!ledData) return;
     try { await api('logExport', { what: 'vendor ledger', rows: ledData.lines.length }); } catch (e) { return toast(e.message); }
-    const rows = [{ Date: $('lfrom').value, Details: 'Opening balance', Purchases: '', Payments: '', Balance: ledData.opening }]
-      .concat(ledData.lines.map(l => ({ Date: day(l.date), Details: l.desc, Purchases: l.purchase || '', Payments: l.payment || '', Balance: l.balance })))
-      .concat([{ Date: '', Details: 'Closing balance', Purchases: ledData.totalPurchases, Payments: ledData.totalPayments, Balance: ledData.closing }]);
+    const blank = { Date: '', Details: '', Product: '', Qty: '', 'Unit cost': '', 'Item amount': '', Purchases: '', Payments: '', Balance: '' };
+    const rows = [Object.assign({}, blank, { Date: $('lfrom').value, Details: 'Opening balance', Balance: ledData.opening })];
+    ledData.lines.forEach(l => {
+      rows.push(Object.assign({}, blank, { Date: day(l.date), Details: l.desc, Purchases: l.purchase || '', Payments: l.payment || '', Balance: l.balance }));
+      (l.items || []).forEach(i => rows.push(Object.assign({}, blank, { Details: '   item', Product: i.product, Qty: i.qty, 'Unit cost': i.cost, 'Item amount': i.amount })));
+    });
+    rows.push(Object.assign({}, blank, { Details: 'Closing balance', Purchases: ledData.totalPurchases, Payments: ledData.totalPayments, Balance: ledData.closing }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Ledger');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((ledData.summary || []).map(x => ({ Product: x.product, 'Units purchased': x.qty, Amount: x.amount }))), 'Units by product');
     XLSX.writeFile(wb, 'ledger-' + ledV.name.replace(/\W+/g, '-') + '-' + ymd(new Date()) + '.xlsx');
   };
 
