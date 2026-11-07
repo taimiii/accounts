@@ -137,7 +137,14 @@
       const m = el('div', undefined, 'm'), t = el('b', o.invoiceNo);
       if (c.expectedDays && o.age > c.expectedDays) t.append(el('span', 'Overdue ' + o.age + ' days', 'tag bad')); else t.append(el('span', o.age + ' days', 'tag'));
       m.append(t, el('small', o.customer + '  |  CN ' + (o.cn || '-')), el('small', 'Delivered ' + day(o.delivered)));
-      const a = el('div', undefined, 'amt'); a.append(el('b', money(o.cod)), el('small', 'charges ' + money(o.charge)));
+      const a = el('div', undefined, 'amt'); a.append(el('b', money(o.cod)), el('small', 'courier charge ' + money(o.charge)));
+      const eb = el('button', 'Edit charge', 'ghost'); eb.style.cssText = 'margin-top:4px;padding:3px 10px;font-size:.78rem';
+      eb.onclick = async ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        const v = prompt('Courier charge for ' + o.invoiceNo + ' (Rs)', o.charge); if (v === null) return;
+        try { await api('setCourierCharge', { orderId: o.OrderID, charge: v }); toast('Charge updated.'); await loadRecv(); } catch (e) { toast(e.message); }
+      };
+      a.appendChild(eb);
       r.append(i, m, a); box.appendChild(r);
     });
     $('rcard').classList.toggle('hide', !c.returns.length);
