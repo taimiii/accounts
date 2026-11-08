@@ -168,7 +168,7 @@
       box.textContent = '';
       const cards = [], add = (label, value, sub, bad, page) => cards.push({ label, value, sub, bad, page });
       if (d.todayOrders !== undefined) { add("Today's orders", d.todayOrders, rs(d.todaySales) + ' sales', false, 'orders.html'); add('To dispatch', d.toDispatch, d.inTransit + ' on the way', false, 'orders.html'); }
-      if (d.courierDue !== undefined) add('Couriers will pay you', rs(d.courierDue), d.courierDueCount + ' delivered orders waiting, after courier charges' + (d.courierOverdue ? ' (' + d.courierOverdue + ' overdue)' : ''), d.courierOverdue > 0, 'courierpay.html');
+      if (d.courierDue !== undefined) add('Couriers will pay you', rs(d.courierDue), d.courierDueCount + ' delivered orders: COD ' + rs(d.courierCod) + ' minus courier charges ' + rs(d.courierCharges) + (d.courierOverdue ? ' (' + d.courierOverdue + ' overdue)' : ''), d.courierOverdue > 0, 'courierpay.html');
       if (d.vendorOwed !== undefined) add('You owe vendors', rs(d.vendorOwed), '', false, 'vendorpay.html');
       if (d.lowStock !== undefined) add('Low stock', d.lowStock + d.outOfStock, d.outOfStock + ' out of stock', d.outOfStock > 0, 'stock.html');
       if (d.cashTotal !== undefined) add('Bank + cash', rs(d.cashTotal), 'all accounts', false, 'money.html');
