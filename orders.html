@@ -100,7 +100,7 @@
         el('small', day(o.OrderDate) + '  |  ' + storeName(o.StoreID)),
         el('small', (o.Customer || '-') + '  |  ' + (o.Phone || '')),
         el('small', o.Items || ''),
-        el('small', 'Total ' + money(o.Total) + (o.Delivery ? ' (incl. delivery ' + money(o.Delivery) + ')' : '') + (o.Advance ? '  |  Advance ' + money(o.Advance) : '') + '  |  COD ' + money(o.COD) + (o.CN ? '  |  CN ' + o.CN : '') + (o.CourierID ? '  |  ' + courierName(o.CourierID) : '')));
+        el('small', 'Total ' + money(o.Total) + (o.Delivery ? ' (incl. delivery ' + money(o.Delivery) + ')' : '') + (o.Advance ? '  |  Advance ' + money(o.Advance) : '') + '  |  COD ' + money(o.COD) + (o.DeliveredDate ? '  |  Courier charge ' + money(o.Charge) : '') + (o.CN ? '  |  CN ' + o.CN : '') + (o.CourierID ? '  |  ' + courierName(o.CourierID) : '')));
       const acts = el('div', undefined, 'acts');
       const inv = el('button', 'Invoice', 'ghost');
       inv.onclick = async () => {
