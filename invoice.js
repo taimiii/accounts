@@ -63,13 +63,13 @@ const Invoice = (function () {
   .inv.thermal .inv-foot{margin-top:8px;font-size:8pt}
 
   #printArea{display:none}
-  @page{size:A4;margin:14mm}
-  @page receipt{size:80mm auto;margin:3mm}
+  @page{size:A4;margin:0}
+  @page receipt{size:80mm auto;margin:0}
   @media print{
     body.printing > *:not(#printArea){display:none !important}
     body.printing #printArea{display:block}
-    #printArea .inv{width:auto;margin:0;padding:0;break-after:page}
-    #printArea .inv.thermal{width:72mm;page:receipt}
+    #printArea .inv{width:auto;margin:0;padding:14mm;break-after:page}
+    #printArea .inv.thermal{width:80mm;padding:4mm;page:receipt}
   }
   .inv-ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
   .inv-modal{background:#fff;color:#111;border-radius:12px;padding:20px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.4);font-family:Arial,Helvetica,sans-serif}

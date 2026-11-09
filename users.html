@@ -48,7 +48,7 @@
   <div class="card">
     <h2>Users</h2>
     <div id="ulist"></div>
-    <button id="addU">Add user</button>
+    <button id="addU" disabled>Loading...</button>
   </div>
 
   <div class="card hide sp" id="uform">
@@ -75,7 +75,7 @@
     <h2>Roles</h2>
     <p class="muted">A role is a set of permissions. Changes apply the next time a user signs in.</p>
     <div id="rlist"></div>
-    <button id="addR">Add role</button>
+    <button id="addR" disabled>Loading...</button>
   </div>
 
   <div class="card hide sp" id="rform">
@@ -100,7 +100,7 @@
     orders: 'Create orders and invoices', customers: 'Customers (add and edit)',
     customers_view: 'Customers (view only)', purchases: 'Purchases and stock',
     payments: 'Courier and vendor payments', expenses: 'Expenses',
-    reports: 'Reports and P&L', export: 'Export to Excel', users: 'Manage users and roles'
+    reports: 'Reports and P&L', export: 'Export to Excel', users: 'Manage users and roles', delete_orders: 'Delete invoices'
   };
   let users = [], roles = [], allPerms = [], stores = [], editingId = null, editingRole = null, pickedRole = '';
 
@@ -136,6 +136,16 @@
     try { renderRoles(); } catch (e) { errs.push('Roles list: ' + e.message); }
     $('err').textContent = errs.join('  |  ');
     $('sub').textContent = users.length + ' users, ' + roles.length + ' roles';
+
+    // If the form was opened before the data arrived, fill it in now (keeps what was ticked)
+    if (!$('uform').classList.contains('hide')) {
+      fillRoleList();
+      const all = $('allst') && $('allst').checked;
+      const picked = [...document.querySelectorAll('#stores input[data-s]:checked')].map(x => x.value);
+      fillStoreList(all || !picked.length ? 'all' : picked.join(','));
+    }
+    $('addU').disabled = false; $('addR').disabled = false;
+    $('addU').textContent = 'Add user'; $('addR').textContent = 'Add role';
   }
   $('reload').onclick = load;
 
@@ -158,6 +168,29 @@
     });
   }
 
+  // Builds the role checklist from the loaded roles (tick one; tick again to untick)
+  function fillRoleList() {
+    const sel = $('urole'); sel.textContent = '';
+    if (!roles.length) { sel.textContent = 'Loading roles... (if this stays, see the red message above and press Reload data)'; return; }
+    roles.forEach(r => {
+      const l = check(r.RoleName, r.RoleName, r.RoleName === pickedRole);
+      const cb = l.firstChild;
+      cb.onchange = () => {
+        sel.querySelectorAll('input').forEach(x => { if (x !== cb) x.checked = false; });
+        pickedRole = cb.checked ? r.RoleName : '';
+      };
+      sel.appendChild(l);
+    });
+  }
+
+  // Builds the store checklist. acc = 'all' or 'S1,S2'
+  function fillStoreList(acc) {
+    const list = acc === 'all' ? [] : acc.split(',').map(x => x.trim());
+    const box = $('stores'); box.textContent = '';
+    const all = check('all', 'All stores', acc === 'all'); all.firstChild.id = 'allst'; box.appendChild(all);
+    stores.forEach(s => box.appendChild(check(s.StoreID, s.StoreName, list.indexOf(s.StoreID) > -1, 'data-s')));
+  }
+
   function openUser(u) {
     editingId = u ? u.UserID : null;
     $('utitle').textContent = u ? 'Edit user' : 'Add user';
@@ -168,24 +201,9 @@
     $('upw').value = '';
     $('pwlabel').textContent = u ? 'New password (leave empty to keep the current one)' : 'Password (min 8 characters)';
 
-    const sel = $('urole'); sel.textContent = '';
     pickedRole = u ? u.Role : '';
-    if (!roles.length) sel.textContent = 'No roles loaded. See the red message at the top, then press Reload data.';
-    roles.forEach(r => {
-      const l = check(r.RoleName, r.RoleName, r.RoleName === pickedRole);
-      const cb = l.firstChild;
-      cb.onchange = () => {
-        sel.querySelectorAll('input').forEach(x => { if (x !== cb) x.checked = false; });
-        pickedRole = cb.checked ? r.RoleName : '';
-      };
-      sel.appendChild(l);
-    });
-
-    const acc = u ? String(u.StoreAccess || 'all') : 'all';
-    const list = acc === 'all' ? [] : acc.split(',').map(x => x.trim());
-    const box = $('stores'); box.textContent = '';
-    const all = check('all', 'All stores', acc === 'all'); all.firstChild.id = 'allst'; box.appendChild(all);
-    stores.forEach(s => box.appendChild(check(s.StoreID, s.StoreName, list.indexOf(s.StoreID) > -1, 'data-s')));
+    fillRoleList();
+    fillStoreList(u ? String(u.StoreAccess || 'all') : 'all');
     $('uform').classList.remove('hide'); $('uform').scrollIntoView({ behavior: 'smooth' });
   }
 

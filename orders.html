@@ -110,6 +110,14 @@
       };
       acts.appendChild(inv);
       const ed = el('button', 'Edit', 'ghost'); ed.onclick = () => { location.href = 'neworder.html?edit=' + encodeURIComponent(o.OrderID); }; acts.appendChild(ed);
+      if (can('delete_orders') && ['Invoiced', 'Dispatched', 'Cancelled', 'Delivered'].indexOf(o.Status) > -1) {
+        const del = el('button', 'Delete', 'ghost');
+        del.onclick = async () => {
+          if (!confirm('Delete invoice ' + o.InvoiceNo + ' (' + o.Customer + ', ' + money(o.Total) + ')?' + (o.Status === 'Delivered' ? '\nIts stock will be put back.' : '') + '\nThis cannot be undone.')) return;
+          try { await api('deleteOrder', { orderId: o.OrderID }); toast('Invoice ' + o.InvoiceNo + ' deleted.'); await load(); } catch (e) { toast(e.message); }
+        };
+        acts.appendChild(del);
+      }
       (NEXT[o.Status] || []).forEach(to => { const b = el('button', to === 'Dispatched' ? 'Dispatch' : to, 'ghost'); b.onclick = () => openAction(o, to); acts.appendChild(b); });
       row.append(left, acts); box.appendChild(row);
     });
