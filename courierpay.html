@@ -58,6 +58,8 @@
           <textarea id="cns" placeholder="One CN per line, or separated by commas or spaces"></textarea>
           <div class="btns"><button class="ghost" id="match">Tick matching orders</button><button class="ghost" id="all">Tick all</button><button class="ghost" id="none">Clear</button></div>
           <p class="muted" id="matchMsg"></p>
+          <label>Set the courier charge of the ticked orders (Rs)</label><input id="bulk" type="text" inputmode="decimal" autocomplete="off">
+          <div class="btns"><button class="ghost" id="bulkGo">Apply to ticked orders</button></div>
         </div>
         <div class="card sp"><div id="olist"></div></div>
         <div class="card sp hide" id="rcard"><h2>Return charges not yet deducted</h2><div id="rlist"></div></div>
@@ -129,7 +131,7 @@
     $('empty').classList.toggle('hide', !!recv.length); $('cbody').classList.toggle('hide', !c);
     if (!c) return;
     const total = c.orders.reduce((a, o) => a + o.cod, 0);
-    $('ageNote').textContent = c.orders.length + ' orders waiting, COD ' + money(total) + (c.expectedDays ? '. ' + c.name + ' usually pays within ' + c.expectedDays + ' days.' : '.');
+    $('ageNote').textContent = c.orders.length + ' orders waiting, COD ' + money(total) + ', courier charges ' + money(c.orders.reduce((a, o) => a + o.charge, 0)) + (c.expectedDays ? '. ' + c.name + ' usually pays within ' + c.expectedDays + ' days.' : '.');
     const box = $('olist'); box.textContent = '';
     c.orders.forEach(o => {
       const r = el('label', undefined, 'it'), i = el('input'); i.type = 'checkbox'; i.checked = selO.has(o.OrderID);
@@ -156,6 +158,7 @@
       const a = el('div', undefined, 'amt'); a.appendChild(el('b', '- ' + money(o.charge)));
       r.append(i, m, a); rb.appendChild(r);
     });
+    if (c.standard && !$('bulk').value) $('bulk').value = c.standard;
     drawAccts(); calc();
   }
 
@@ -200,6 +203,13 @@
     const missing = list.filter(x => !found.has(x));
     $('matchMsg').textContent = found.size + ' matched.' + (missing.length ? ' Not found here: ' + missing.join(', ') : '');
     drawCourier();
+  };
+
+  $('bulkGo').onclick = async () => {
+    if (!selO.size) return toast('Tick the orders first.');
+    const v = $('bulk').value.trim(); if (!v) return toast('Enter the charge for each order.');
+    if (!confirm('Set the courier charge to ' + money(n(v)) + ' on each of the ' + selO.size + ' ticked orders?')) return;
+    try { const r = await api('setCourierCharges', { orderIds: Array.from(selO), charge: v }); toast(r.updated + ' orders updated.'); await loadRecv(); } catch (e) { toast(e.message); }
   };
 
   $('save').onclick = async () => {

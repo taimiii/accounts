@@ -91,6 +91,13 @@
     $('lockMsg').textContent = data.locked ? 'This month is locked. Expenses cannot be added, changed or deleted.' : '';
     $('add').classList.toggle('hide', data.locked);
     const box = $('list'); box.textContent = '';
+    (data.auto || []).forEach(a => {   // courier costs, taken from the orders
+      const row = el('div', undefined, 'row'), left = el('div'), t = el('b', a.label);
+      t.append(el('span', a.group, 'tag'), el('span', 'Automatic', 'tag'));
+      left.append(t, el('small', 'Calculated from your orders and courier payments. Change it in Orders or Courier Payments.'));
+      const rt = el('div', undefined, 'acts'); rt.style.flexDirection = 'column'; rt.style.alignItems = 'flex-end'; rt.appendChild(el('b', money(a.amount)));
+      row.append(left, rt); box.appendChild(row);
+    });
     data.rows.forEach(r => {
       const row = el('div', undefined, 'row'), left = el('div'), t = el('b', r.type);
       t.append(el('span', r.group, 'tag')); if (r.shared) t.append(el('span', 'Shared', 'tag'));
@@ -103,7 +110,7 @@
       }
       row.append(left, rt); box.appendChild(row);
     });
-    if (!data.rows.length) box.textContent = 'No expenses in this month.';
+    if (!data.rows.length && !(data.auto || []).length) box.textContent = 'No expenses in this month.';
   }
 
   function tick(box, opts, current, onPick) {
