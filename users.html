@@ -42,6 +42,20 @@
 </header>
 
 <main class="wrap">
+  <div class="card">
+    <h2>My account</h2>
+    <div class="btns"><button id="pwBtn">Change password</button></div>
+    <div id="pwCard" class="hide">
+      <label for="op">Current password</label>
+      <input id="op" type="password" autocomplete="current-password">
+      <label for="np">New password (min 8 characters)</label>
+      <input id="np" type="password" autocomplete="new-password">
+      <div class="btns"><button id="chg">Save new password</button></div>
+      <p id="pmsg" class="err"></p>
+    </div>
+  </div>
+
+  <div id="mgmt" class="sp">
   <p class="err" id="err"></p>
   <button class="ghost" id="reload" style="margin-bottom:12px">Reload data</button>
   <!-- USERS -->
@@ -88,13 +102,15 @@
       <button class="ghost" id="cancelR">Cancel</button>
     </div>
   </div>
+  </div>
 </main>
 <div id="toast"></div>
 
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script>
-  if (!Store.token || !can('users')) location.replace('app.html');
+  if (!Store.token) location.replace('index.html');
+  const canManage = can('users');   // everyone may change their own password; only managers see the rest
   const $ = id => document.getElementById(id);
   const LABELS = {
     orders: 'Create orders and invoices', customers: 'Customers (add and edit)',
@@ -272,7 +288,19 @@
     $('saveR').disabled = false;
   };
 
-  load();
+  /* ---------- Change my password ---------- */
+  $('pwBtn').onclick = () => $('pwCard').classList.toggle('hide');
+  $('chg').onclick = async () => {
+    const m = $('pmsg'); m.className = 'err'; m.textContent = ''; $('chg').disabled = true;
+    try {
+      await api('changePassword', { oldPassword: $('op').value, newPassword: $('np').value });
+      m.className = 'good'; m.textContent = 'Password changed.'; $('op').value = ''; $('np').value = '';
+    } catch (e) { m.textContent = e.message; }
+    $('chg').disabled = false;
+  };
+
+  $('mgmt').classList.toggle('hide', !canManage);
+  if (canManage) load();
 </script>
 </body>
 </html>

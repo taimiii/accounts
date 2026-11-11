@@ -4,54 +4,74 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Accounts</title>
+<title>Invoicing & Accounting</title>
 <link rel="stylesheet" href="style.css">
 <style>
   .hide { display: none; }
-  .sp { margin-top: 16px; }
-  .checks label { display: flex; align-items: center; gap: 10px; margin: 10px 0; color: var(--text); font-size: 1rem; }
-  input[type=checkbox] { width: auto; }
-  .hbtns { display: flex; gap: 8px; }
-  .cur { font-weight: 700; color: var(--brand); }
-  .tile.off { opacity: .55; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+  header { flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .brand svg { flex: 0 0 auto; }
+  .brand b { font-size: 1.02rem; }
+  .chip { width: auto; margin: 0; padding: 5px 12px; border: 1px solid var(--line); background: var(--bg); color: var(--brand);
+          border-radius: 99px; font-weight: 700; font-size: .9rem; cursor: pointer; }
+  .chip.fixed { cursor: default; }
+  .who2 { display: flex; align-items: center; gap: 10px; font-size: .85rem; color: var(--muted); }
+  h2.sec { font-size: 1.05rem; margin: 22px 0 10px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-  .stat small { display: block; color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; }
-  .stat b { display: block; font-size: 1.25rem; margin-top: 4px; }
-  .stat span { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+  .stat small { display: block; color: var(--muted); font-size: .76rem; text-transform: uppercase; letter-spacing: .4px; }
+  .stat b { display: block; font-size: 1.25rem; margin-top: 4px; overflow-wrap: anywhere; }
+  .stat span { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; min-height: 1em; }
   .stat.bad b { color: var(--err); }
+  .menu { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .menu button { margin: 0; padding: 16px 12px; background: var(--card); color: var(--text); border: 1px solid var(--line);
+                 border-radius: 12px; font-weight: 600; font-size: .95rem; text-align: center; }
+  .menu button:active { background: var(--bg); }
+  .ov { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal { background: var(--card); color: var(--text); border-radius: 14px; padding: 22px; width: 100%; max-width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  .modal select { width: 100%; padding: 13px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); margin-top: 6px; }
+  .modal option { background: var(--card); color: var(--text); }
+  .modal .row2 { display: flex; gap: 10px; }
+  .modal .row2 button { margin-top: 16px; }
 </style>
 </head>
 <body>
 <header>
-  <div class="who"><b id="name"></b><small id="role"></small></div>
-  <div class="hbtns">
-    <button class="ghost" id="pwBtn">Change password</button>
-    <button class="ghost" id="logout">Log out</button>
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="4" y="2" width="20" height="26" rx="3" fill="#1a73e8"/>
+      <rect x="8" y="7" width="12" height="2.2" rx="1" fill="#fff"/>
+      <rect x="8" y="12" width="12" height="2.2" rx="1" fill="#fff" opacity=".85"/>
+      <rect x="8" y="17" width="7" height="2.2" rx="1" fill="#fff" opacity=".7"/>
+      <circle cx="23" cy="23" r="7" fill="#16a34a"/>
+      <path d="M23 19v8M20.5 21.5c.8-1 4-1.2 5 0 .9 1.2-.5 2-2.5 2.2-2 .2-3.2 1-2.5 2.2.8 1.4 4 1.2 5 0" stroke="#fff" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+    </svg>
+    <b>Invoicing &amp; Accounting</b>
+    <button class="chip hide" id="storeChip" title="Change company"></button>
   </div>
+  <div class="who2"><span id="who"></span><button class="ghost" id="logout">Log out</button></div>
 </header>
 
 <main class="wrap">
-  <div class="card hide" id="pwCard" style="max-width:380px">
-    <h2>Change my password</h2>
-    <label for="op">Current password</label>
-    <input id="op" type="password" autocomplete="current-password">
-    <label for="np">New password (min 8 characters)</label>
-    <input id="np" type="password" autocomplete="new-password">
-    <button id="chg">Change password</button>
-    <p id="pmsg" class="err"></p>
-  </div>
+  <h2 class="sec" style="margin-top:6px">Dashboard</h2>
+  <div class="stats" id="stats"></div>
 
-  <div class="card" id="storeCard">
-    <h2>Working store</h2>
-    <p class="muted" id="storeMsg">Loading your stores...</p>
-    <div class="checks" id="stores"></div>
-  </div>
-
-  <div class="stats hide" id="stats"></div>
-
-  <div class="grid sp" id="menu"></div>
+  <h2 class="sec">Menu</h2>
+  <div class="menu" id="menu"></div>
 </main>
+
+<!-- Company (store) picker: shown after login, and when you tap the company name in the header -->
+<div class="ov hide" id="ov">
+  <div class="modal">
+    <h2 style="margin:0">Select company</h2>
+    <p class="muted" style="margin:4px 0 0" id="ovMsg">Choose the company you want to work in.</p>
+    <select id="storeSel"></select>
+    <div class="row2">
+      <button id="goBtn" disabled>Continue</button>
+      <button class="ghost" id="cancelBtn" style="width:auto">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script src="config.js"></script>
@@ -60,124 +80,99 @@
   if (!Store.token || !Store.user) location.replace('index.html');
   const $ = id => document.getElementById(id);
   const user = Store.user;
-  $('name').textContent = user.fullName;
-  $('role').textContent = user.role;
+  $('who').textContent = user.fullName + ' (' + user.role + ')';
 
-  // 'store: true' = the tile works inside the store chosen above
+  // Menu buttons, in this order. 'store: true' = needs a selected company. 'always' = every user.
   const MENU = [
-    { t: 'Orders & Invoices', d: 'New order, status, invoice PDF', perms: ['orders'], page: 'orders.html', store: true },
-    { t: 'Customers', d: 'Customer list and history', perms: ['customers', 'customers_view'], page: 'customers.html' },
-    { t: 'Purchases & Stock', d: 'Purchase invoices, batches', perms: ['purchases'], page: 'stock.html', store: true },
-    { t: 'Product List', d: 'View, print, download', perms: ['orders', 'purchases', 'reports'], page: 'products.html', store: true },
-    { t: 'Courier Rates', d: 'Delivery charges by weight', perms: ['payments', 'users'], page: 'ratecards.html' },
-    { t: 'Courier Payments', d: 'Receivables, remittances', perms: ['payments'], page: 'courierpay.html', store: true },
-    { t: 'Vendor Payments', d: 'Payables and ledger', perms: ['payments'], page: 'vendorpay.html' },
-    { t: 'Bank & Cash', d: 'Balances, transfers, statements', perms: ['payments', 'reports'], page: 'money.html' },
-    { t: 'Expenses', d: 'Direct and indirect', perms: ['expenses'], page: 'expenses.html', store: true },
-    { t: 'Reports & P&L', d: 'Statements, profit and loss', perms: ['reports'], page: 'reports.html' },
-    { t: 'Month Lock & Backup', d: 'Close months, back up data', perms: ['users'], page: 'lock.html' },
-    { t: 'Setup Lists', d: 'Products, stores, vendors, couriers', perms: ['users'], page: 'setup.html' },
-    { t: 'Users & Access', d: 'Add users, set permissions', perms: ['users'], page: 'users.html' }
+    { t: 'Orders & Invoices', perms: ['orders'], page: 'orders.html', store: true },
+    { t: 'Customers', perms: ['customers', 'customers_view'], page: 'customers.html' },
+    { t: 'Purchases & Stock', perms: ['purchases'], page: 'stock.html', store: true },
+    { t: 'Product List', perms: ['orders', 'purchases', 'reports'], page: 'products.html', store: true },
+    { t: 'Courier Rates', perms: ['payments', 'users'], page: 'ratecards.html' },
+    { t: 'Courier Payments', perms: ['payments'], page: 'courierpay.html', store: true },
+    { t: 'Vendor Payments', perms: ['payments'], page: 'vendorpay.html' },
+    { t: 'Bank & Cash', perms: ['payments', 'reports'], page: 'money.html' },
+    { t: 'Expenses', perms: ['expenses'], page: 'expenses.html', store: true },
+    { t: 'Reports & P&L Statements', perms: ['reports'], page: 'reports.html' },
+    { t: 'Month Lock & Backup', perms: ['users'], page: 'lock.html' },
+    { t: 'Setup Lists', perms: ['users'], page: 'setup.html' },
+    { t: 'Users & Access', always: true, page: 'users.html' }
   ];
 
-  function toast(msg) {
-    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
-    clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 2800);
-  }
+  let stores = [];
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 2800); }
+  function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
 
-  /* ---------- Menu tiles ---------- */
   function drawMenu() {
     const menu = $('menu'); menu.textContent = '';
-    MENU.filter(m => m.perms.some(can)).forEach(m => {
-      const b = document.createElement('button');
-      b.className = 'tile' + (m.store && !Store.storeId ? ' off' : '');
-      b.style.width = 'auto'; b.style.marginTop = '0'; b.style.color = 'inherit';
-      const t = document.createElement('b'); t.textContent = m.t;
-      const d = document.createElement('span'); d.textContent = m.d;
-      b.append(t, d);
-      b.onclick = () => {
-        if (m.store && !Store.storeId) { toast('Select your working store first.'); $('storeCard').scrollIntoView({ behavior: 'smooth' }); return; }
-        if (m.page) location.href = m.page; else toast('Coming in Step ' + m.step);
-      };
+    MENU.filter(m => m.always || m.perms.some(can)).forEach(m => {
+      const b = el('button', m.t);
+      b.onclick = () => { if (m.store && !Store.storeId) return openPicker(true); location.href = m.page; };
       menu.appendChild(b);
     });
-    if (!menu.children.length) menu.textContent = 'No modules are enabled for your role yet.';
   }
 
-  /* ---------- Working store (one at a time, so stores never mix) ---------- */
-  function drawStores(stores) {
-    const box = $('stores'); box.textContent = '';
-    if (!stores.length) { $('storeMsg').textContent = 'No store is available for your account.'; return; }
-    $('storeMsg').textContent = Store.storeId ? 'You are working in: ' : 'Select the store you want to work in.';
-    if (Store.storeId) { const c = document.createElement('span'); c.className = 'cur'; c.textContent = Store.storeName; $('storeMsg').appendChild(c); }
-    stores.forEach(s => {
-      const l = document.createElement('label'), i = document.createElement('input');
-      i.type = 'checkbox'; i.checked = s.StoreID === Store.storeId;
-      i.onchange = () => {
-        box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; });
-        Store.setStore(i.checked ? s.StoreID : '', i.checked ? s.StoreName : '');
-        drawStores(stores); drawMenu(); loadStats();
-        if (i.checked) toast('Working store: ' + s.StoreName);
-      };
-      l.append(i, document.createTextNode(' ' + s.StoreName)); box.appendChild(l);
-    });
+  /* ---------- Company picker ---------- */
+  function drawChip() {
+    const c = $('storeChip');
+    c.classList.toggle('hide', !Store.storeId);
+    c.textContent = Store.storeName + (stores.length > 1 ? '  \u25BE' : '');
+    c.classList.toggle('fixed', stores.length <= 1);
   }
+  function openPicker(required) {
+    if (!stores.length) return;
+    const sel = $('storeSel'); sel.textContent = '';
+    const ph = el('option', 'Select company...'); ph.value = ''; sel.appendChild(ph);
+    stores.forEach(s => { const o = el('option', s.StoreName); o.value = s.StoreID; sel.appendChild(o); });
+    sel.value = Store.storeId; $('goBtn').disabled = !sel.value;
+    $('cancelBtn').classList.toggle('hide', !!required && !Store.storeId);
+    $('ov').classList.remove('hide');
+  }
+  $('storeSel').onchange = () => { $('goBtn').disabled = !$('storeSel').value; };
+  $('goBtn').onclick = () => {
+    const s = stores.find(x => x.StoreID === $('storeSel').value); if (!s) return;
+    Store.setStore(s.StoreID, s.StoreName); $('ov').classList.add('hide'); drawChip(); loadStats();
+  };
+  $('cancelBtn').onclick = () => $('ov').classList.add('hide');
+  $('storeChip').onclick = () => { if (stores.length > 1) openPicker(false); };
 
   async function loadStores() {
     try {
-      const L = await api('getLists');
-      const stores = L.stores || [];
-      // Only one store available: choose it automatically. A saved choice that is no longer valid is dropped.
-      if (Store.storeId && !stores.some(s => s.StoreID === Store.storeId)) Store.setStore('', '');
-      if (!Store.storeId && stores.length === 1) Store.setStore(stores[0].StoreID, stores[0].StoreName);
-      drawStores(stores); drawMenu();
-    } catch (e) { $('storeMsg').textContent = e.message; }
+      stores = (await api('getLists')).stores || [];
+    } catch (e) { $('stats').appendChild(el('div', e.message, 'stat')); return; }
+    if (Store.storeId && !stores.some(s => s.StoreID === Store.storeId)) Store.setStore('', '');
+    if (!Store.storeId && stores.length === 1) Store.setStore(stores[0].StoreID, stores[0].StoreName);   // only one company: no question
+    drawChip();
+    if (!stores.length) { $('stats').textContent = ''; $('stats').appendChild(note('No company is available for your account.')); return; }
+    if (!Store.storeId) openPicker(true); else loadStats();
   }
 
-  /* ---------- Header buttons ---------- */
-  $('pwBtn').onclick = () => { $('pwCard').classList.toggle('hide'); if (!$('pwCard').classList.contains('hide')) $('pwCard').scrollIntoView({ behavior: 'smooth' }); };
-
-  $('logout').onclick = async () => {
-    try { await api('logout'); } catch (e) {}
-    Store.clear(); location.replace('index.html');
-  };
-
-  $('chg').onclick = async () => {
-    const m = $('pmsg'); m.className = 'err'; m.textContent = '';
-    $('chg').disabled = true;
-    try {
-      await api('changePassword', { oldPassword: $('op').value, newPassword: $('np').value });
-      m.className = 'good'; m.textContent = 'Password changed.';
-      $('op').value = ''; $('np').value = '';
-      setTimeout(() => $('pwCard').classList.add('hide'), 1800);
-    } catch (e) { m.textContent = e.message; }
-    $('chg').disabled = false;
-  };
-
-  /* ---------- Daily numbers for the working store ---------- */
+  /* ---------- Dashboard ---------- */
   const rs = v => 'Rs ' + Math.round(Number(v || 0)).toLocaleString('en-PK');
-  const note = (text, onclick) => { const x = document.createElement('div'); x.className = 'stat'; x.style.gridColumn = '1 / -1'; x.textContent = text; if (onclick) { x.style.cursor = 'pointer'; x.onclick = onclick; } return x; };
+  function note(text, onclick) { const x = el('div', text, 'stat'); x.style.gridColumn = '1 / -1'; if (onclick) { x.style.cursor = 'pointer'; x.onclick = onclick; } return x; }
 
   async function loadStats() {
-    const box = $('stats'); box.textContent = ''; box.classList.remove('hide');
-    if (!Store.storeId) { box.appendChild(note("Select your working store above to see today's numbers.")); return; }
-    const sid = Store.storeId; box.appendChild(note("Loading today's numbers..."));
+    const box = $('stats'); box.textContent = '';
+    if (!Store.storeId) return;
+    const sid = Store.storeId; box.appendChild(note("Loading numbers..."));
     try {
       const d = await api('getDashboard', { storeId: sid });
-      if (sid !== Store.storeId) return;   // the store was changed while loading
+      if (sid !== Store.storeId) return;   // the company was changed while loading
       box.textContent = '';
-      const cards = [], add = (label, value, sub, bad, page) => cards.push({ label, value, sub, bad, page });
-      if (d.todayOrders !== undefined) { add("Today's orders", d.todayOrders, rs(d.todaySales) + ' sales', false, 'orders.html'); add('To dispatch', d.toDispatch, d.inTransit + ' on the way', false, 'orders.html'); }
-      if (d.courierDue !== undefined) add('Couriers will pay you', rs(d.courierDue), d.courierDueCount + ' delivered orders: COD ' + rs(d.courierCod) + ' minus courier charges ' + rs(d.courierCharges) + (d.courierOverdue ? ' (' + d.courierOverdue + ' overdue)' : ''), d.courierOverdue > 0, 'courierpay.html');
-      if (d.vendorOwed !== undefined) add('You owe vendors', rs(d.vendorOwed), '', false, 'vendorpay.html');
-      if (d.lowStock !== undefined) add('Low stock', d.lowStock + d.outOfStock, d.outOfStock + ' out of stock', d.outOfStock > 0, 'stock.html');
-      if (d.cashTotal !== undefined) add('Bank + cash', rs(d.cashTotal), 'all accounts', false, 'money.html');
-      if (d.monthSales !== undefined) add('This month sales', rs(d.monthSales), '', false, 'reports.html');
-      if (d.monthProfit !== undefined) add('This month profit', rs(d.monthProfit), 'after expenses of ' + rs(d.monthExpenses), d.monthProfit < 0, 'reports.html');
+      const cards = [], add = (label, value, sub, bad, page) => cards.push({ label, value, sub: sub || '', bad: !!bad, page });
+      if (d.todayOrders !== undefined) add("Today's Orders", d.todayOrders, rs(d.todaySales), false, 'orders.html');
+      if (d.toDispatch !== undefined) add('To Dispatch', d.toDispatch, d.inTransit + ' on the way', false, 'orders.html');
+      if (d.courierDue !== undefined) add('Couriers Receivable', rs(d.courierDue), '', d.courierOverdue > 0, 'courierpay.html');
+      if (d.monthDelivered !== undefined) add('Delivered Orders', d.monthDelivered, 'This month', false, 'orders.html');
+      if (d.monthCourierCharges !== undefined) add('Courier Charges', rs(d.monthCourierCharges), 'This month', false, 'expenses.html');
+      if (d.vendorOwed !== undefined) add('Vendors Payable', rs(d.vendorOwed), '', false, 'vendorpay.html');
+      if (d.lowStock !== undefined) add('Low Stock', d.lowStock + d.outOfStock, '', d.outOfStock > 0, 'stock.html');
+      if (d.cashTotal !== undefined) add('Bank + Cash', rs(d.cashTotal), '', false, 'money.html');
+      if (d.monthSales !== undefined) add('Sales', rs(d.monthSales), 'This month', false, 'reports.html');
+      if (d.monthProfit !== undefined) add('This Month Profit', rs(d.monthProfit), '', d.monthProfit < 0, 'reports.html');
       cards.forEach(c => {
-        const x = document.createElement('div'); x.className = 'stat' + (c.bad ? ' bad' : ''); x.style.cursor = 'pointer';
-        const l = document.createElement('small'); l.textContent = c.label; const v = document.createElement('b'); v.textContent = c.value; const s = document.createElement('span'); s.textContent = c.sub;
-        x.append(l, v, s); x.onclick = () => { location.href = c.page; }; box.appendChild(x);
+        const x = el('div', undefined, 'stat' + (c.bad ? ' bad' : '')); x.style.cursor = 'pointer';
+        x.append(el('small', c.label), el('b', c.value), el('span', c.sub)); x.onclick = () => { location.href = c.page; }; box.appendChild(x);
       });
       if (!cards.length) box.appendChild(note('No numbers are enabled for your role.'));
     } catch (e) {
@@ -186,7 +181,12 @@
     }
   }
 
-  drawMenu(); loadStores().then(loadStats);
+  $('logout').onclick = async () => {
+    try { await api('logout'); } catch (e) {}
+    Store.clear(); location.replace('index.html');
+  };
+
+  drawMenu(); loadStores();
 </script>
 </body>
 </html>
