@@ -7,7 +7,7 @@
 <title>Invoicing & Accounting</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  .hide { display: none; }
+  .hide { display: none !important; }   /* must win over .ov { display: flex } below */
   header { flex-wrap: wrap; }
   .brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
   .brand svg { flex: 0 0 auto; }
