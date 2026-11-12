@@ -7,30 +7,24 @@
 <title>Orders</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-  .chip { width: auto; margin: 0; padding: 7px 13px; border: 1px solid var(--line); background: var(--card);
-          color: var(--text); border-radius: 99px; font-weight: 500; font-size: .85rem; }
-  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
-  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
-         padding: 12px 0; border-bottom: 1px solid var(--line); }
+  select { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  option { background: var(--card); color: var(--text); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .col button { width: 100%; margin-top: 10px; }
+  .hide { display: none !important; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button { margin-top: 12px; flex: 1 1 140px; }
+  .row { display: grid; grid-template-columns: 1fr 138px; gap: 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
-  .row > div:first-child { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
   .row small { display: block; color: var(--muted); }
-  .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+  select.act { padding: 9px 8px; font-size: .88rem; }
   .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); margin-left: 6px; }
   .tag.Yellow { color: #d97706; border-color: #d97706; } .tag.Red { color: var(--err); border-color: var(--err); }
   .checks label { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text); font-size: .95rem; }
   input[type=checkbox] { width: auto; }
-  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line);
-                     border-radius: 8px; background: var(--bg); color: var(--text); }
-  .hide { display: none; }
-  .sp { margin-top: 16px; }
-  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btns button { margin-top: 12px; flex: 1 1 140px; }
-  @media (max-width: 520px) {
-    .row { flex-direction: column; align-items: stretch; gap: 8px; }
-    .acts { justify-content: stretch; } .acts button { flex: 1; }
-  }
+  input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
 </style>
 </head>
 <body>
@@ -42,9 +36,18 @@
 <main class="wrap">
   <p class="err" id="err"></p>
   <div class="card">
-    <div class="chips" id="chips"></div>
-    <input id="q" type="text" placeholder="Search invoice, customer, phone or CN" autocomplete="off">
-    <div class="btns"><button id="newBtn" onclick="location.href='neworder.html'">New order</button></div>
+    <div class="two">
+      <div class="col">
+        <input id="q" type="text" placeholder="Search invoice, customer, phone or CN" autocomplete="off">
+        <button id="newBtn" onclick="location.href='neworder.html'">New order</button>
+      </div>
+      <div class="col">
+        <select id="statusSel">
+          <option value="All">All</option><option>Invoiced</option><option>Dispatched</option><option>Delivered</option>
+          <option>Paid</option><option>Returned</option><option>Refused</option><option value="Cancelled">Cancelled</option>
+        </select>
+      </div>
+    </div>
   </div>
 
   <div class="card hide sp" id="apanel"></div>
@@ -60,7 +63,6 @@
 <script>
   if (!Store.token || !can('orders')) location.replace('app.html');
   const $ = id => document.getElementById(id);
-  const STATUSES = ['All', 'Invoiced', 'Dispatched', 'Delivered', 'Paid', 'Returned', 'Refused', 'Cancelled'];
   const NEXT = { Invoiced: ['Dispatched', 'Cancelled'], Dispatched: ['Delivered', 'Returned', 'Refused'], Delivered: ['Returned'] };
   let status = 'All', rows = [], lists = null, timer = null;
 
@@ -69,10 +71,7 @@
   const money = v => 'Rs ' + Math.round(Number(v || 0)).toLocaleString('en-PK');
   const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
 
-  function drawChips() {
-    const box = $('chips'); box.textContent = '';
-    STATUSES.forEach(s => { const b = el('button', s, 'chip' + (s === status ? ' on' : '')); b.onclick = () => { status = s; drawChips(); load(); }; box.appendChild(b); });
-  }
+  $('statusSel').onchange = () => { status = $('statusSel').value; load(); };
 
   async function load() {
     $('err').textContent = '';
@@ -101,25 +100,23 @@
         el('small', (o.Customer || '-') + '  |  ' + (o.Phone || '')),
         el('small', o.Items || ''),
         el('small', 'Total ' + money(o.Total) + (o.Delivery ? ' (incl. delivery ' + money(o.Delivery) + ')' : '') + (o.Advance ? '  |  Advance ' + money(o.Advance) : '') + '  |  COD ' + money(o.COD) + (o.DeliveredDate ? '  |  Courier charge ' + money(o.Charge) : '') + (o.CN ? '  |  CN ' + o.CN : '') + (o.CourierID ? '  |  ' + courierName(o.CourierID) : '')));
-      const acts = el('div', undefined, 'acts');
-      const inv = el('button', 'Invoice', 'ghost');
-      inv.onclick = async () => {
-        inv.disabled = true;
-        try { Invoice.openDialog(await api('getInvoiceData', { orderId: o.OrderID })); } catch (e) { toast(e.message); }
-        inv.disabled = false;
-      };
-      acts.appendChild(inv);
-      const ed = el('button', 'Edit', 'ghost'); ed.onclick = () => { location.href = 'neworder.html?edit=' + encodeURIComponent(o.OrderID); }; acts.appendChild(ed);
-      if (can('delete_orders') && ['Invoiced', 'Dispatched', 'Cancelled', 'Delivered'].indexOf(o.Status) > -1) {
-        const del = el('button', 'Delete', 'ghost');
-        del.onclick = async () => {
+      // one combo box with the actions that apply to this invoice
+      const sel = el('select', undefined, 'act');
+      const opts = [['', 'Actions'], ['invoice', 'Invoice'], ['edit', 'Edit']];
+      if (can('delete_orders') && ['Invoiced', 'Dispatched', 'Cancelled', 'Delivered'].indexOf(o.Status) > -1) opts.push(['delete', 'Delete']);
+      (NEXT[o.Status] || []).forEach(to => opts.push(['to:' + to, to === 'Dispatched' ? 'Dispatch' : to === 'Cancelled' ? 'Cancel' : to]));
+      opts.forEach(x => { const op = el('option', x[1]); op.value = x[0]; sel.appendChild(op); });
+      sel.onchange = async () => {
+        const v = sel.value; sel.value = ''; if (!v) return;
+        if (v === 'invoice') { try { Invoice.openDialog(await api('getInvoiceData', { orderId: o.OrderID })); } catch (e) { toast(e.message); } }
+        else if (v === 'edit') location.href = 'neworder.html?edit=' + encodeURIComponent(o.OrderID);
+        else if (v === 'delete') {
           if (!confirm('Delete invoice ' + o.InvoiceNo + ' (' + o.Customer + ', ' + money(o.Total) + ')?' + (o.Status === 'Delivered' ? '\nIts stock will be put back.' : '') + '\nThis cannot be undone.')) return;
           try { await api('deleteOrder', { orderId: o.OrderID }); toast('Invoice ' + o.InvoiceNo + ' deleted.'); await load(); } catch (e) { toast(e.message); }
-        };
-        acts.appendChild(del);
-      }
-      (NEXT[o.Status] || []).forEach(to => { const b = el('button', to === 'Dispatched' ? 'Dispatch' : to, 'ghost'); b.onclick = () => openAction(o, to); acts.appendChild(b); });
-      row.append(left, acts); box.appendChild(row);
+        } else openAction(o, v.slice(3));
+      };
+      const right = el('div'); right.appendChild(sel);
+      row.append(left, right); box.appendChild(row);
     });
   }
 
@@ -173,7 +170,7 @@
     btns.append(ok, no); p.appendChild(btns); p.scrollIntoView({ behavior: 'smooth' });
   }
 
-  drawChips(); load();
+  load();
 </script>
 </body>
 </html>

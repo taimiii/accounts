@@ -8,7 +8,17 @@
 <link rel="stylesheet" href="style.css">
 <style>
   input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
-  .hide { display: none; } .sp { margin-top: 16px; }
+  .hide { display: none !important; } .sp { margin-top: 16px; }
+  .ov { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .modal { background: var(--card); color: var(--text); border-radius: 14px; padding: 18px; width: 100%; max-width: 760px; max-height: 92vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  #printArea { display: none; }
+  @media print {
+    body.printing > *:not(#printArea) { display: none !important; }
+    body.printing #printArea { display: block; }
+    #printArea .sheet { padding: 14mm; }
+    @page { size: A4; margin: 0; }
+  }
+
   .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; } .row small { display: block; color: var(--muted); }
@@ -56,15 +66,20 @@
     <div class="btns"><button id="csave">Save</button><button class="ghost" id="ccancel">Cancel</button></div>
   </div>
 
-  <div class="card hide sp" id="stm">
-    <h2 id="stitle"></h2>
-    <div class="two"><div><label>From</label><input id="sfrom" type="date"></div><div><label>To</label><input id="sto" type="date"></div></div>
-    <div class="btns"><button id="sgo">Show statement</button><button class="ghost" id="sclose">Close</button></div>
-    <div class="tw sp" id="sbody"></div>
-  </div>
 </main>
+<div class="ov hide" id="stm">
+  <div class="modal">
+    <h2 id="stitle" style="margin-top:0"></h2>
+    <div class="two"><div><label>From</label><input id="sfrom" type="date"></div><div><label>To</label><input id="sto" type="date"></div></div>
+    <div class="btns"><button id="sgo">Show statement</button></div>
+    <div class="tw sp" id="sbody"></div>
+    <div class="btns"><button id="sprn" class="hide">Print</button><button id="spdf" class="hide">Download PDF</button><button class="ghost" id="sclose">Close</button></div>
+  </div>
+</div>
+<div id="printArea"></div>
 <div id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script>
@@ -134,30 +149,56 @@
     $('csave').disabled = false;
   };
 
-  /* ---------- Statement ---------- */
+  /* ---------- Statement (popup, printable, PDF) ---------- */
+  let lastR = null;
   function openStatement(a) {
-    curA = a; $('stitle').textContent = 'Statement: ' + a.name;
+    curA = a; lastR = null; $('stitle').textContent = 'Statement: ' + a.name;
     const t = new Date(), f = new Date(); f.setDate(f.getDate() - 30);
     $('sfrom').value = f.toLocaleDateString('en-CA'); $('sto').value = t.toLocaleDateString('en-CA');
-    $('stm').classList.remove('hide'); $('stm').scrollIntoView({ behavior: 'smooth' }); showStatement();
+    $('sprn').classList.add('hide'); $('spdf').classList.add('hide'); $('sbody').textContent = '';
+    $('stm').classList.remove('hide'); showStatement();
   }
+
+  // A plain black-on-white page: the same look on screen, in print and in the PDF
+  function buildSheet() {
+    const w = el('div', undefined, 'sheet'); w.style.cssText = 'font-family:Arial,sans-serif;color:#111;background:#fff;padding:12px;border-radius:8px';
+    const h = el('div', 'Account Statement - ' + lastR.name); h.style.cssText = 'font-size:16pt;font-weight:700';
+    const d = el('div', $('sfrom').value + '  to  ' + $('sto').value); d.style.cssText = 'color:#555;margin:2px 0 10px';
+    const t = el('table'); t.style.cssText = 'border-collapse:collapse;width:100%;font-size:10pt';
+    const cell = (tag, text, right, bold) => { const c = el(tag, text); c.style.cssText = 'border:1px solid #999;padding:5px 7px;text-align:' + (right ? 'right' : 'left') + ';' + (bold || tag === 'th' ? 'font-weight:700;' : '') + (tag === 'th' ? 'background:#eee;' : ''); return c; };
+    const hr = el('tr'); [['Date', 0], ['Details', 0], ['In / Out', 1], ['Balance', 1]].forEach(c => hr.appendChild(cell('th', c[0], c[1]))); t.appendChild(hr);
+    const add = (cells, bold) => { const tr = el('tr'); cells.forEach((c, i) => tr.appendChild(cell('td', c, i > 1, bold))); t.appendChild(tr); };
+    add([$('sfrom').value, 'Opening balance', '', money(lastR.opening)], true);
+    lastR.lines.forEach(l => add([day(l.date), l.desc, (l.amount > 0 ? '+' : '-') + money(Math.abs(l.amount)), money(l.balance)]));
+    add(['', 'Closing balance', '', money(lastR.closing)], true);
+    w.append(h, d, t); return w;
+  }
+
   async function showStatement() {
     const body = $('sbody'); body.textContent = 'Loading...';
     try {
-      const r = await api('getAccountStatement', { accountId: curA.AccountID, from: $('sfrom').value, to: $('sto').value });
-      body.textContent = '';
-      const t = el('table', undefined, 'lg'), hr = el('tr');
-      [['Date', ''], ['Details', ''], ['In / Out', 'r'], ['Balance', 'r']].forEach(c => hr.appendChild(el('th', c[0], c[1])));
-      const th = el('thead'); th.appendChild(hr); t.appendChild(th);
-      const tb = el('tbody');
-      const add = (cells, cls, tone) => { const tr = el('tr', undefined, cls || ''); cells.forEach((c, i) => { const td = el('td', c, i > 1 ? 'r' : ''); if (i === 2 && tone) td.className += ' ' + tone; tr.appendChild(td); }); tb.appendChild(tr); };
-      add([$('sfrom').value, 'Opening balance', '', money(r.opening)], 'b');
-      r.lines.forEach(l => add([day(l.date), l.desc, (l.amount > 0 ? '+' : '-') + money(Math.abs(l.amount)), money(l.balance)], '', l.amount > 0 ? 'pos' : 'neg'));
-      add(['', 'Closing balance', '', money(r.closing)], 'b');
-      t.appendChild(tb); body.appendChild(t);
+      lastR = await api('getAccountStatement', { accountId: curA.AccountID, from: $('sfrom').value, to: $('sto').value });
+      body.textContent = ''; body.appendChild(buildSheet());
+      $('sprn').classList.remove('hide'); $('spdf').classList.toggle('hide', !can('export'));
     } catch (e) { body.textContent = e.message; }
   }
-  $('sgo').onclick = showStatement; $('sclose').onclick = () => $('stm').classList.add('hide');
+  $('sgo').onclick = showStatement;
+  $('sclose').onclick = () => $('stm').classList.add('hide');
+  $('sprn').onclick = () => {
+    if (!lastR) return;
+    const a = $('printArea'); a.textContent = ''; a.appendChild(buildSheet()); document.body.classList.add('printing');
+    window.onafterprint = () => { document.body.classList.remove('printing'); a.textContent = ''; };
+    setTimeout(() => window.print(), 150);
+  };
+  $('spdf').onclick = async () => {
+    if (!lastR) return;
+    if (typeof html2pdf === 'undefined') return toast('PDF library did not load. Check your internet.');
+    try { await api('logExport', { what: 'account statement', rows: lastR.lines.length }); } catch (e) { return toast(e.message); }
+    $('spdf').disabled = true;
+    try { await html2pdf().set({ margin: 8, filename: 'statement-' + lastR.name.replace(/\W+/g, '-') + '-' + $('sto').value + '.pdf', image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(buildSheet()).save(); } catch (e) { toast(e.message); }
+    $('spdf').disabled = false;
+  };
 
   load();
 </script>

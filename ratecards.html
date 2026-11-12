@@ -7,7 +7,9 @@
 <title>Courier Rates</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  .hide { display: none; } .sp { margin-top: 16px; }
+  .hide { display: none !important; } .sp { margin-top: 16px; }
+  select { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  option { background: var(--card); color: var(--text); }
   .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 140px; }
   .checks label { display: flex; align-items: center; gap: 10px; margin: 8px 0; color: var(--text); font-size: 1rem; }
   input[type=checkbox] { width: auto; }
@@ -27,7 +29,8 @@
   <p class="err" id="err"></p>
   <div class="card">
     <h2>1. Choose courier</h2>
-    <div class="checks" id="couriers">Loading...</div>
+    <select id="courierSel"><option value="">Select courier</option></select>
+    <p class="muted" id="cmsg"></p>
   </div>
 
   <div class="card hide sp" id="card">
@@ -54,14 +57,11 @@
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
 
   async function init() {
-    try { couriers = (await api('getLists')).couriers || []; } catch (e) { $('err').textContent = e.message; $('couriers').textContent = ''; return; }
-    const box = $('couriers'); box.textContent = '';
-    if (!couriers.length) box.textContent = 'No couriers yet. Add them in Setup Lists first.';
-    couriers.forEach(c => {
-      const l = el('label'), i = el('input'); i.type = 'checkbox';
-      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); if (i.checked) pick(c); else { cur = null; $('card').classList.add('hide'); } };
-      l.append(i, document.createTextNode(' ' + c.CourierName)); box.appendChild(l);
-    });
+    try { couriers = (await api('getLists')).couriers || []; } catch (e) { $('err').textContent = e.message; return; }
+    if (!couriers.length) $('cmsg').textContent = 'No couriers yet. Add them in Setup Lists first.';
+    const sel = $('courierSel');
+    couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; sel.appendChild(o); });
+    sel.onchange = () => { const c = couriers.find(x => x.CourierID === sel.value); if (c) pick(c); else { cur = null; $('card').classList.add('hide'); } };
   }
 
   async function pick(c) {

@@ -7,10 +7,14 @@
 <title>Purchases & Stock</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-  .chip { width: auto; margin: 0; padding: 8px 16px; border: 1px solid var(--line); background: var(--card);
-          color: var(--text); border-radius: 99px; font-weight: 500; font-size: .9rem; }
-  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  select { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  option { background: var(--card); color: var(--text); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .col button { width: 100%; margin-top: 10px; }
+  .hide { display: none !important; }
+  .sp { margin-top: 16px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button { margin-top: 12px; flex: 1 1 140px; }
   .item { border-bottom: 1px solid var(--line); padding: 12px 0; }
   .item:last-child { border-bottom: 0; }
   .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
@@ -21,8 +25,6 @@
   .tag.bad { color: var(--err); border-color: var(--err); } .tag.warn { color: #d97706; border-color: #d97706; }
   .batches { margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: .88rem; }
   .batches div { padding: 4px 0; overflow-wrap: anywhere; } .batches .gone { opacity: .5; }
-  .hide { display: none; } .sp { margin-top: 16px; }
-  .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 140px; }
   .total { font-weight: 700; margin-top: 10px; }
 </style>
 </head>
@@ -42,9 +44,15 @@
 
   <div id="main" class="hide">
     <div class="card">
-      <div class="chips" id="tabs"></div>
-      <input id="q" type="text" placeholder="Search product, SKU or vendor" autocomplete="off">
-      <div class="btns"><button onclick="location.href='newpurchase.html'">New purchase</button></div>
+      <div class="two">
+        <div class="col">
+          <input id="q" type="text" placeholder="Search product, SKU or vendor" autocomplete="off">
+          <button onclick="location.href='newpurchase.html'">New purchase</button>
+        </div>
+        <div class="col">
+          <select id="tabSel"><option value="Purchases">Purchases</option><option value="Stock">Stock</option></select>
+        </div>
+      </div>
     </div>
     <div class="card hide sp" id="adj">
       <h2 id="adjTitle"></h2>
@@ -71,10 +79,7 @@
   const money = v => v === null || v === undefined ? '' : 'Rs ' + Math.round(Number(v)).toLocaleString('en-PK');
   const day = v => { const d = new Date(v); return v && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; };
 
-  function drawTabs() {
-    const box = $('tabs'); box.textContent = '';
-    ['Stock', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); load(); }; box.appendChild(b); });
-  }
+  function drawTabs() { const s = $('tabSel'); s.value = tab; s.onchange = () => { tab = s.value; load(); }; }
 
   async function load() {
     $('err').textContent = '';

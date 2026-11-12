@@ -8,7 +8,17 @@
 <link rel="stylesheet" href="style.css">
 <style>
   input[type=date], input[type=month] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
-  .hide { display: none; } .sp { margin-top: 16px; }
+  .hide { display: none !important; } .sp { margin-top: 16px; }
+  .ov { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .modal { background: var(--card); color: var(--text); border-radius: 14px; padding: 18px; width: 100%; max-width: 760px; max-height: 92vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  #printArea { display: none; }
+  @media print {
+    body.printing > *:not(#printArea) { display: none !important; }
+    body.printing #printArea { display: block; }
+    #printArea .sheet { padding: 14mm; }
+    @page { size: A4; margin: 0; }
+  }
+
   .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 130px; }
   .sum div { display: flex; justify-content: space-between; padding: 3px 0; }
   .sum .big { font-weight: 700; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
@@ -41,7 +51,7 @@
       <label style="margin-top:0">Month</label><input id="mon" type="month">
       <div class="sum sp" id="sum"></div>
       <p class="muted" id="lockMsg"></p>
-      <div class="btns"><button id="add">Add expense</button></div>
+      <div class="btns"><button id="add">Add expense</button><button class="ghost" id="prn">Print statement</button><button class="ghost hide" id="pdf">Download PDF</button></div>
     </div>
 
     <div class="card hide sp" id="form">
@@ -60,7 +70,9 @@
   </div>
 </main>
 <div id="toast"></div>
+<div id="printArea"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script>
@@ -148,6 +160,39 @@
     if (!confirm('Delete this expense (' + r.type + ', ' + money(r.amount) + ')?')) return;
     try { await api('deleteExpense', { expenseId: r.id }); toast('Expense deleted.'); await load(); } catch (e) { toast(e.message); }
   }
+
+  /* ---------- Statement: print and PDF ---------- */
+  function buildSheet() {
+    const w = el('div', undefined, 'sheet'); w.style.cssText = 'font-family:Arial,sans-serif;color:#111;background:#fff;padding:8px';
+    const h = el('div', 'Expenses Statement - ' + Store.storeName); h.style.cssText = 'font-size:16pt;font-weight:700';
+    const d = el('div', 'Month: ' + $('mon').value); d.style.cssText = 'color:#555;margin:2px 0 10px';
+    const t = el('table'); t.style.cssText = 'border-collapse:collapse;width:100%;font-size:10pt';
+    const cell = (tag, text, right, bold) => { const c = el(tag, text); c.style.cssText = 'border:1px solid #999;padding:5px 7px;text-align:' + (right ? 'right' : 'left') + ';' + (bold || tag === 'th' ? 'font-weight:700;' : '') + (tag === 'th' ? 'background:#eee;' : ''); return c; };
+    const hr = el('tr'); ['Date', 'Expense', 'Group', 'Paid from', 'Note', 'Amount'].forEach((c, i) => hr.appendChild(cell('th', c, i === 5))); t.appendChild(hr);
+    const add = (cells, bold) => { const tr = el('tr'); cells.forEach((c, i) => tr.appendChild(cell('td', c, i === 5, bold))); t.appendChild(tr); };
+    (data.auto || []).forEach(a => add(['', a.label, a.group, 'Automatic', '', money(a.amount)]));
+    data.rows.forEach(r => add([day(r.date), r.type + (r.source ? ' (' + r.source + ')' : ''), r.group, r.account, (r.shared ? 'Shared. ' : '') + r.note, money(r.amount)]));
+    add(['', 'Direct expenses', '', '', '', money(data.direct)], true);
+    add(['', 'Indirect expenses', '', '', '', money(data.indirect)], true);
+    add(['', 'Total', '', '', '', money(data.total)], true);
+    w.append(h, d, t); return w;
+  }
+  $('prn').onclick = () => {
+    if (!data) return toast('Wait for the list to load.');
+    const a = $('printArea'); a.textContent = ''; a.appendChild(buildSheet()); document.body.classList.add('printing');
+    window.onafterprint = () => { document.body.classList.remove('printing'); a.textContent = ''; };
+    setTimeout(() => window.print(), 150);
+  };
+  $('pdf').classList.toggle('hide', !can('export'));
+  $('pdf').onclick = async () => {
+    if (!data) return toast('Wait for the list to load.');
+    if (typeof html2pdf === 'undefined') return toast('PDF library did not load. Check your internet.');
+    try { await api('logExport', { what: 'expenses statement', rows: data.rows.length }); } catch (e) { return toast(e.message); }
+    $('pdf').disabled = true;
+    try { await html2pdf().set({ margin: 8, filename: 'expenses-' + Store.storeName.replace(/\W+/g, '-') + '-' + $('mon').value + '.pdf', image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(buildSheet()).save(); } catch (e) { toast(e.message); }
+    $('pdf').disabled = false;
+  };
 
   init();
 </script>

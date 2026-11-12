@@ -8,7 +8,12 @@
 <link rel="stylesheet" href="style.css">
 <style>
   input[type=date] { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
-  .hide { display: none; } .sp { margin-top: 16px; }
+  .hide { display: none !important; } .sp { margin-top: 16px; }
+  select { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  option { background: var(--card); color: var(--text); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .col button { width: 100%; margin-top: 10px; }
+
   .btns { display: flex; gap: 10px; flex-wrap: wrap; } .btns button { margin-top: 12px; flex: 1 1 120px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .chip { width: auto; margin: 0; padding: 8px 16px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 99px; font-weight: 500; font-size: .9rem; }
@@ -41,8 +46,12 @@
 <main class="wrap">
   <p class="err noprint" id="err"></p>
   <div class="card noprint">
-    <div class="chips" id="tabs"></div>
-    <label style="margin-top:0">Store</label><div class="checks" id="scope"></div>
+    <label style="margin-top:0">Statement type</label>
+    <select id="typeSel">
+      <option>Profit &amp; Loss</option><option>Sales</option><option>Sales by City</option><option>Sales by Channel</option>
+      <option>Ads &amp; Channels</option><option>Couriers</option><option>Purchases</option>
+    </select>
+    <label>Company</label><select id="scopeSel"></select>
     <div class="two"><div><label>From</label><input id="from" type="date"></div><div><label>To</label><input id="to" type="date"></div></div>
     <div class="btns">
       <button class="ghost" id="thisM">This month</button><button class="ghost" id="lastM">Last month</button>
@@ -79,17 +88,15 @@
     $('xls').classList.toggle('hide', !can('export')); $('prn').classList.remove('hide');
   }
   function drawScope() {
-    const box = $('scope'); box.textContent = '';
-    const opts = stores.map(s => ({ id: s.StoreID, label: s.StoreName })); if (stores.length > 1) opts.push({ id: 'ALL', label: 'All stores combined' });
-    opts.forEach(o => {
-      const l = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = o.id === scope;
-      i.onchange = () => { box.querySelectorAll('input').forEach(x => { if (x !== i) x.checked = false; }); scope = i.checked ? o.id : ''; };
-      l.append(i, document.createTextNode(' ' + o.label)); box.appendChild(l);
-    });
+    const sel = $('scopeSel'); sel.textContent = '';
+    stores.forEach(x => { const o = el('option', x.StoreName); o.value = x.StoreID; sel.appendChild(o); });
+    if (stores.length > 1) { const o = el('option', 'All companies combined'); o.value = 'ALL'; sel.appendChild(o); }
+    sel.value = scope;
+    sel.onchange = () => { scope = sel.value; $('out').classList.add('hide'); };
   }
   function drawTabs() {
-    const box = $('tabs'); box.textContent = '';
-    ['Profit & Loss', 'Sales', 'Sales by City', 'Sales by Channel', 'Ads & Channels', 'Couriers', 'Purchases'].forEach(t => { const b = el('button', t, 'chip' + (t === tab ? ' on' : '')); b.onclick = () => { tab = t; drawTabs(); $('out').classList.add('hide'); }; box.appendChild(b); });
+    const sel = $('typeSel'); sel.value = tab;
+    sel.onchange = () => { tab = sel.value; $('out').classList.add('hide'); };
   }
   function setMonth(back) {
     const d = new Date(), a = new Date(d.getFullYear(), d.getMonth() - back, 1), b = back ? new Date(d.getFullYear(), d.getMonth() - back + 1, 0) : d;
