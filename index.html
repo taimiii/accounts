@@ -4,25 +4,59 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Accounts - Sign in</title>
+<title>Invoicing & Accounting - Sign in</title>
 <link rel="stylesheet" href="style.css">
+<style>
+  body { background: #0b1b3a; }
+  .scene { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; position: relative; overflow: hidden;
+    background: radial-gradient(1100px 600px at 8% -10%, #3b82f6 0%, transparent 60%), radial-gradient(900px 600px at 110% 8%, #a855f7 0%, transparent 55%),
+                radial-gradient(800px 600px at 50% 125%, #14b8a6 0%, transparent 55%), #0b1b3a; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .45; animation: float 14s ease-in-out infinite; pointer-events: none; }
+  .b1 { width: 280px; height: 280px; background: #60a5fa; top: -70px; left: -50px; }
+  .b2 { width: 300px; height: 300px; background: #c084fc; bottom: -90px; right: -60px; animation-delay: -5s; }
+  .b3 { width: 200px; height: 200px; background: #2dd4bf; top: 55%; left: 8%; animation-delay: -9s; }
+  @keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(34px, -26px); } }
+
+  /* the card stays light in both light and dark mode */
+  .panel { --bg: #f1f5f9; --card: #fff; --text: #0f172a; --muted: #64748b; --line: #dbe3ef;
+           position: relative; z-index: 1; width: 100%; max-width: 410px; background: rgba(255,255,255,.97); color: #0f172a;
+           border-radius: 26px; padding: 32px 26px 24px; box-shadow: 0 30px 80px rgba(2,6,23,.55); animation: rise .5s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  .logo-big { display: flex; justify-content: center; margin-bottom: 14px; line-height: 0; }
+  .logo-big svg { filter: drop-shadow(0 10px 18px rgba(37,99,235,.45)); }
+  .panel h1 { text-align: center; font-size: 1.45rem; margin: 0; }
+  .panel .tag { text-align: center; color: var(--muted); font-size: .92rem; margin: 6px 0 20px; }
+  .field { position: relative; }
+  .field .i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1.05rem; opacity: .75; pointer-events: none; }
+  .field input { padding-left: 44px; padding-right: 46px; height: 50px; }
+  .eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: auto; margin: 0; padding: 8px 10px;
+         background: transparent; color: #64748b; box-shadow: none; font-size: 1.1rem; }
+  .eye:hover { background: transparent; filter: none; color: #2563eb; }
+  .go { height: 50px; font-size: 1.05rem; margin-top: 20px; }
+  .foot { text-align: center; color: #94a3b8; font-size: .8rem; margin: 18px 0 0; }
+  .panel .err { text-align: center; }
+</style>
 </head>
 <body>
-<main class="center">
-  <div class="card login">
-    <h1>Accounts</h1>
-    <p class="muted">Sign in to continue</p>
+<main class="scene">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="panel">
+    <div class="logo-big" id="logo"></div>
+    <h1>Invoicing &amp; Accounting</h1>
+    <p class="tag">Orders, stock, couriers and profit in one place</p>
 
     <label for="u">Username</label>
-    <input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <div class="field"><span class="i">&#128100;</span>
+      <input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Enter your username"></div>
 
     <label for="p">Password</label>
-    <input id="p" type="password" autocomplete="current-password">
+    <div class="field"><span class="i">&#128274;</span>
+      <input id="p" type="password" autocomplete="current-password" placeholder="Enter your password">
+      <button type="button" class="eye" id="eye" title="Show or hide password">&#128065;</button></div>
 
-    <label class="chk"><input type="checkbox" id="show"> Show password</label>
-
-    <button id="go">Sign in</button>
+    <button id="go" class="go">Sign in &rarr;</button>
     <p id="msg" class="err"></p>
+    <p class="foot">&#128274; Secure sign in. Your data stays in your own Google account.</p>
   </div>
 </main>
 
@@ -32,7 +66,8 @@
   if (Store.token) location.replace('app.html');
 
   const $ = id => document.getElementById(id);
-  $('show').onchange = () => { $('p').type = $('show').checked ? 'text' : 'password'; };
+  $('logo').innerHTML = Brand.svg(72);
+  $('eye').onclick = () => { const p = $('p'); p.type = p.type === 'password' ? 'text' : 'password'; };
 
   async function signIn() {
     $('msg').textContent = '';
@@ -45,11 +80,12 @@
       location.replace('app.html');
     } catch (e) {
       $('msg').textContent = e.message;
-      $('go').disabled = false; $('go').textContent = 'Sign in';
+      $('go').disabled = false; $('go').innerHTML = 'Sign in &rarr;';
     }
   }
   $('go').onclick = signIn;
   $('p').addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+  $('u').addEventListener('keydown', e => { if (e.key === 'Enter') $('p').focus(); });
 </script>
 </body>
 </html>
