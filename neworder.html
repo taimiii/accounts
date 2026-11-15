@@ -159,7 +159,7 @@
   async function init() {
     if (!sid) { $('nostore').classList.remove('hide'); return; }
     $('sub').textContent = Store.storeName;
-    try { L = await api('getLists'); } catch (e) { $('err').textContent = e.message; return; }
+    try { L = await api('getLists', { storeId: sid }); } catch (e) { $('err').textContent = e.message; return; }
     if (!L.stores.some(s => s.StoreID === sid)) { Store.setStore('', ''); $('nostore').classList.remove('hide'); return; }
     P = L.products.filter(p => p.StoreID === sid);
     const st = L.stores.find(x => x.StoreID === sid) || {}; rule = { free: n(st.FreeDeliveryAbove), fee: n(st.DeliveryCharge) };
@@ -206,7 +206,7 @@
     if (p === lastPhone || p.replace(/\D/g, '').length < 10) return; lastPhone = p;
     $('custInfo').textContent = 'Checking...';
     try {
-      const r = await api('getCustomerByPhone', { phone: p });
+      const r = await api('getCustomerByPhone', { phone: p, storeId: sid });
       if (!r.valid) $('custInfo').textContent = 'This does not look like a valid mobile number.';
       else if (r.customer) {
         const c = r.customer, lines = String(c.Address || '').split('\n');
@@ -229,7 +229,7 @@
   async function runRisk() {
     const phone = $('phone').value.trim(); if (phone.replace(/\D/g, '').length < 10) return;
     try {
-      const r = await api('getRisk', { phone: phone, address: $('a1').value + ' ' + $('a2').value, productIds: rows.map(x => x.pid).filter(Boolean) });
+      const r = await api('getRisk', { storeId: sid, phone: phone, address: $('a1').value + ' ' + $('a2').value, productIds: rows.map(x => x.pid).filter(Boolean) });
       const box = $('risk'); box.className = 'risk ' + r.level.toLowerCase(); box.textContent = '';
       box.appendChild(el('b', { Green: 'OK to proceed', Yellow: 'Verify before dispatch', Red: 'HIGH RISK' }[r.level], r.level.toLowerCase()));
       if (r.reasons.length) { const ul = el('ul'); r.reasons.forEach(x => ul.appendChild(el('li', x))); box.appendChild(ul); }

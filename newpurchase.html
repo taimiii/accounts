@@ -94,7 +94,7 @@
     if (!sid) { $('nostore').classList.remove('hide'); return; }
     $('sub').textContent = Store.storeName;
     let L;
-    try { L = await api('getLists'); } catch (e) { $('err').textContent = e.message; return; }
+    try { L = await api('getLists', { storeId: sid }); } catch (e) { $('err').textContent = e.message; return; }
     if (!L.stores.some(s => s.StoreID === sid)) { Store.setStore('', ''); $('nostore').classList.remove('hide'); return; }
     P = L.products.filter(p => p.StoreID === sid);
     (L.vendors || []).forEach(v => { const o = el('option', v.VendorName); o.value = v.VendorID; $('vendor').appendChild(o); });

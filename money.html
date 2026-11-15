@@ -35,7 +35,7 @@
 </head>
 <body>
 <header>
-  <div class="who"><b>Bank &amp; Cash</b><small>Balances of all your accounts</small></div>
+  <div class="who"><b>Bank &amp; Cash</b><small id="csub">Balances of your accounts</small></div>
   <button class="ghost" onclick="location.href='app.html'">Back</button>
 </header>
 
@@ -85,6 +85,7 @@
 <script>
   if (!Store.token || !(can('payments') || can('reports'))) location.replace('app.html');
   const $ = id => document.getElementById(id);
+  if (!Store.storeId) location.replace('app.html');   // work inside one company
   let accts = [], curA = null, tf = '', tt = '', cType = '', cAcct = '';
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
@@ -104,7 +105,7 @@
   async function load() {
     $('err').textContent = '';
     try {
-      const r = await api('listAccounts'); accts = r.accounts; const box = $('list'); box.textContent = '';
+      const r = await api('listAccounts', { storeId: Store.storeId }); accts = r.accounts; const box = $('list'); box.textContent = '';
       accts.forEach(a => {
         const row = el('div', undefined, 'row'), l = el('div'), rt = el('div'); rt.style.textAlign = 'right';
         l.append(el('b', a.name), el('small', a.type + (a.active ? '' : '  |  inactive')));
@@ -128,7 +129,7 @@
   $('tcancel').onclick = () => $('tform').classList.add('hide');
   $('tsave').onclick = async () => {
     $('tsave').disabled = true;
-    try { await api('createTransfer', { fromId: tf, toId: tt, amount: $('tamt').value, date: $('tdate').value, note: $('tnote').value });
+    try { await api('createTransfer', { storeId: Store.storeId, fromId: tf, toId: tt, amount: $('tamt').value, date: $('tdate').value, note: $('tnote').value });
       toast('Transfer saved.'); $('tform').classList.add('hide'); await load(); } catch (e) { toast(e.message); }
     $('tsave').disabled = false;
   };
@@ -144,7 +145,7 @@
   $('ccancel').onclick = () => $('cform').classList.add('hide');
   $('csave').onclick = async () => {
     $('csave').disabled = true;
-    try { await api('createCapital', { type: cType, accountId: cAcct, amount: $('camt').value, date: $('cdate').value, note: $('cnote').value });
+    try { await api('createCapital', { storeId: Store.storeId, type: cType, accountId: cAcct, amount: $('camt').value, date: $('cdate').value, note: $('cnote').value });
       toast('Saved.'); $('cform').classList.add('hide'); await load(); } catch (e) { toast(e.message); }
     $('csave').disabled = false;
   };
@@ -177,7 +178,7 @@
   async function showStatement() {
     const body = $('sbody'); body.textContent = 'Loading...';
     try {
-      lastR = await api('getAccountStatement', { accountId: curA.AccountID, from: $('sfrom').value, to: $('sto').value });
+      lastR = await api('getAccountStatement', { storeId: Store.storeId, accountId: curA.AccountID, from: $('sfrom').value, to: $('sto').value });
       body.textContent = ''; body.appendChild(buildSheet());
       $('sprn').classList.remove('hide'); $('spdf').classList.toggle('hide', !can('export'));
     } catch (e) { body.textContent = e.message; }
@@ -200,6 +201,7 @@
     $('spdf').disabled = false;
   };
 
+  $('csub').textContent = Store.storeName + '  |  bank, wallets and cash';
   load();
 </script>
 </body>

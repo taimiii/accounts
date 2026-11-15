@@ -77,7 +77,7 @@
     $('err').textContent = '';
     if (!Store.storeId) { $('list').textContent = 'Select your working store on the dashboard first.'; $('sub').textContent = ''; return; }
     try {
-      if (!lists) lists = await api('getLists');
+      if (!lists) lists = await api('getLists', { storeId: Store.storeId });
       rows = await api('listOrders', { status: status === 'All' ? '' : status, q: $('q').value.trim(), storeId: Store.storeId });
       render();
     } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }

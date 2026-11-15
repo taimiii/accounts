@@ -77,6 +77,7 @@
 <script>
   if (!Store.token || !(can('customers') || can('customers_view'))) location.replace('app.html');
   const $ = id => document.getElementById(id);
+  if (!Store.storeId) location.replace('app.html');   // work inside one company
   const canEdit = can('customers');
   let all = [], filtered = [], editingId = null;
 
@@ -96,7 +97,7 @@
 
   async function load() {
     try {
-      all = await api('listCustomers');
+      all = await api('listCustomers', { storeId: Store.storeId });
       $('err').textContent = '';
       render();
     } catch (e) { $('err').textContent = e.message; }
@@ -109,7 +110,7 @@
     const q = $('q').value.trim().toLowerCase();
     filtered = all.filter(c => !q ||
       [c.Name, c.Phone, c.City, c.Tags, c.Email].join(' ').toLowerCase().indexOf(q) > -1);
-    $('sub').textContent = all.length + ' customers';
+    $('sub').textContent = Store.storeName + '  |  ' + all.length + ' customers';
     const box = $('clist'); box.textContent = '';
     filtered.slice(0, 100).forEach(c => {
       const row = el('div', undefined, 'row');
@@ -151,7 +152,7 @@
     const hist = el('div', 'Loading...', 'muted'); d.appendChild(hist);
     d.scrollIntoView({ behavior: 'smooth' });
     try {
-      const rows = await api('getCustomerHistory', { customerId: c.CustomerID });
+      const rows = await api('getCustomerHistory', { customerId: c.CustomerID, storeId: Store.storeId });
       hist.textContent = '';
       if (!rows.length) hist.textContent = 'No orders yet.';
       rows.forEach(o => {
@@ -178,7 +179,7 @@
   $('saveC').onclick = async () => {
     $('saveC').disabled = true;
     try {
-      await api('saveCustomer', {
+      await api('saveCustomer', { storeId: Store.storeId,
         customerId: editingId, name: $('cname').value, phone: $('cphone').value, city: $('ccity').value,
         address: $('caddr').value, email: $('cemail').value, tags: $('ctags').value, notes: $('cnotes').value
       });

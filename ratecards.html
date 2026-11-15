@@ -21,7 +21,7 @@
 </head>
 <body>
 <header>
-  <div class="who"><b>Courier Rates</b><small>Delivery charge by parcel weight</small></div>
+  <div class="who"><b>Courier Rates</b><small id="csub">Delivery charge by parcel weight</small></div>
   <button class="ghost" onclick="location.href='app.html'">Back</button>
 </header>
 
@@ -51,13 +51,14 @@
 <script>
   if (!Store.token || !(can('payments') || can('users'))) location.replace('app.html');
   const $ = id => document.getElementById(id);
+  if (!Store.storeId) location.replace('app.html');   // work inside one company
   let couriers = [], cur = null, slabs = [];
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500); }
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
 
   async function init() {
-    try { couriers = (await api('getLists')).couriers || []; } catch (e) { $('err').textContent = e.message; return; }
+    try { couriers = (await api('getLists', { storeId: Store.storeId })).couriers || []; } catch (e) { $('err').textContent = e.message; return; }
     if (!couriers.length) $('cmsg').textContent = 'No couriers yet. Add them in Setup Lists first.';
     const sel = $('courierSel');
     couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; sel.appendChild(o); });
@@ -99,6 +100,7 @@
     $('save').disabled = false;
   };
 
+  $('csub').textContent = Store.storeName + '  |  delivery charge by parcel weight';
   init();
 </script>
 </body>

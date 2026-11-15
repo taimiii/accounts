@@ -65,6 +65,7 @@
 <script>
   if (!Store.token || !can('payments')) location.replace('app.html');
   const $ = id => document.getElementById(id);
+  if (!Store.storeId) location.replace('app.html');   // work inside one company
   let vendors = [], accounts = [], acct = '', payV = null, ledV = null, ledData = null;
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4000); }
@@ -77,8 +78,8 @@
   async function load() {
     $('err').textContent = '';
     try {
-      accounts = (await api('getLists')).accounts || [];
-      vendors = await api('listPayables');
+      accounts = (await api('getLists', { storeId: Store.storeId })).accounts || [];
+      vendors = await api('listPayables', { storeId: Store.storeId });
       render();
     } catch (e) { $('err').textContent = e.message; $('list').textContent = ''; }
   }
@@ -128,7 +129,7 @@
     if (payV.balance > 0 && amt > payV.balance && !confirm('This is more than you owe (' + money(payV.balance) + '). The extra is kept as an advance to the vendor. Continue?')) return;
     $('psave').disabled = true;
     try {
-      await api('createVendorPayment', { vendorId: payV.VendorID, amount: $('pamt').value, date: $('pdate').value, accountId: acct, note: $('pnote').value });
+      await api('createVendorPayment', { storeId: Store.storeId, vendorId: payV.VendorID, amount: $('pamt').value, date: $('pdate').value, accountId: acct, note: $('pnote').value });
       toast('Payment recorded.'); $('pay').classList.add('hide'); await load();
     } catch (e) { toast(e.message); }
     $('psave').disabled = false;
@@ -143,7 +144,7 @@
   async function showLedger() {
     const body = $('lbody'); body.textContent = 'Loading...';
     try {
-      ledData = await api('getVendorLedger', { vendorId: ledV.VendorID, from: $('lfrom').value, to: $('lto').value });
+      ledData = await api('getVendorLedger', { storeId: Store.storeId, vendorId: ledV.VendorID, from: $('lfrom').value, to: $('lto').value });
       body.textContent = '';
       const t = el('table', undefined, 'lg'), hr = el('tr');
       [['Date', ''], ['Details', ''], ['Purchases', 'r'], ['Payments', 'r'], ['Balance', 'r']].forEach(c => hr.appendChild(el('th', c[0], c[1])));
@@ -192,6 +193,7 @@
     XLSX.writeFile(wb, 'ledger-' + ledV.name.replace(/\W+/g, '-') + '-' + ymd(new Date()) + '.xlsx');
   };
 
+  $('sub').textContent = Store.storeName + '  |  what you owe your vendors';
   load();
 </script>
 </body>

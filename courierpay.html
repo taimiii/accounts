@@ -102,7 +102,7 @@
     if (!sid) { $('nostore').classList.remove('hide'); return; }
     $('main').classList.remove('hide'); $('sub').textContent = Store.storeName;
     $('rdate').value = new Date().toLocaleDateString('en-CA');
-    try { accounts = (await api('getLists')).accounts || []; } catch (e) { $('err').textContent = e.message; }
+    try { accounts = (await api('getLists', { storeId: sid })).accounts || []; } catch (e) { $('err').textContent = e.message; }
     drawTabs(); await loadRecv();
   }
 
