@@ -64,3 +64,19 @@ main.wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
 #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #0f172a; color: #fff;
          padding: 11px 18px; border-radius: 12px; font-size: .92rem; display: none; max-width: 90%;
          box-shadow: 0 10px 30px rgba(2,6,23,.4); z-index: 100; }
+
+/* ---------- Optional themes (Users & Access > Appearance). No theme = the default look above. ---------- */
+html[data-theme="light"] { color-scheme: light; --bg: #f9fbff; --card: #ffffff; --text: #1f2a44; --muted: #6a7893; --brand: #3b82f6;
+  --line: #e6edf9; --err: #dc2626; --ok: #16a34a; --grad: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+  --shadow: 0 1px 2px rgba(59,130,246,.06), 0 8px 20px rgba(59,130,246,.10); }
+html[data-theme="light"] header { background: linear-gradient(120deg, #dbeafe 0%, #e0e7ff 50%, #f3e8ff 100%); color: #1e3a8a; box-shadow: 0 4px 14px rgba(59,130,246,.18); }
+html[data-theme="light"] header .who, html[data-theme="light"] header .who b { color: #1e3a8a; }
+html[data-theme="light"] header .who small, html[data-theme="light"] .who2 { color: #475b85; }
+html[data-theme="light"] header button.ghost { background: rgba(59,130,246,.12); color: #1d4ed8; border: 1px solid rgba(59,130,246,.3); }
+html[data-theme="light"] header button.ghost:hover { background: rgba(59,130,246,.2); }
+html[data-theme="light"] button { box-shadow: 0 6px 14px rgba(96,165,250,.35); }
+
+html[data-theme="night"] { color-scheme: dark; --bg: #0a0f1e; --card: #111a30; --text: #e6ecfa; --muted: #8fa0bd; --brand: #7aa8ff;
+  --line: #1f2b48; --err: #f87171; --ok: #4ade80;
+  --shadow: 0 1px 2px rgba(0,0,0,.5), 0 10px 26px rgba(0,0,0,.45); }
+html[data-theme="night"] header { background: linear-gradient(120deg, #0b1226 0%, #17214a 55%, #2a2160 100%); box-shadow: 0 6px 20px rgba(0,0,0,.55); }

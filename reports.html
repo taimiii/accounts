@@ -48,8 +48,9 @@
   <div class="card noprint">
     <label style="margin-top:0">Statement type</label>
     <select id="typeSel">
-      <option>Profit &amp; Loss</option><option>Sales</option><option>Sales by City</option><option>Sales by Channel</option>
-      <option>Ads &amp; Channels</option><option>Couriers</option><option>Purchases</option>
+      <option>Profit &amp; Loss</option><option>Balance Sheet</option><option>Sales</option><option>Product Sales</option>
+      <option>Sales by City</option><option>Sales by Channel</option><option>Ads &amp; Channels</option><option>Couriers</option>
+      <option>Purchases</option><option>Product Purchases</option>
     </select>
     <label>Company</label><select id="scopeSel"></select>
     <div class="two"><div><label>From</label><input id="from" type="date"></div><div><label>To</label><input id="to" type="date"></div></div>
@@ -117,11 +118,12 @@
     $('err').textContent = ''; $('go').disabled = true;
     const p = { storeId: scope, from: $('from').value, to: $('to').value };
     try {
-      const action = { 'Profit & Loss': 'getPL', 'Sales': 'getSalesStatement', 'Purchases': 'getPurchaseStatement', 'Ads & Channels': 'getMarketing', 'Couriers': 'getCourierPerformance' }[tab] || 'getSalesBreakdown';
+      const action = { 'Profit & Loss': 'getPL', 'Balance Sheet': 'getBalanceSheet', 'Sales': 'getSalesStatement', 'Product Sales': 'getProductSales', 'Purchases': 'getPurchaseStatement', 'Product Purchases': 'getProductPurchases', 'Ads & Channels': 'getMarketing', 'Couriers': 'getCourierPerformance' }[tab] || 'getSalesBreakdown';
+      if (action === 'getBalanceSheet') p.asOf = p.to;   // a balance sheet is a picture on one date: the "To" date
       if (action === 'getSalesBreakdown') p.by = tab === 'Sales by City' ? 'city' : 'source';
       result = await api(action, p);
       const name = scope === 'ALL' ? 'All stores' : (stores.find(s => s.StoreID === scope) || {}).StoreName;
-      $('rtitle').textContent = tab + ' - ' + name; $('rsub').textContent = p.from + '  to  ' + p.to;
+      $('rtitle').textContent = tab + ' - ' + name; $('rsub').textContent = tab === 'Balance Sheet' ? 'As at ' + p.to : p.from + '  to  ' + p.to;
       $('out').classList.remove('hide'); draw();
     } catch (e) { toast(e.message); }
     $('go').disabled = false;
@@ -131,6 +133,9 @@
   function draw() {
     const body = $('body'); body.textContent = ''; const views = $('views'); views.textContent = ''; views.classList.add('hide'); rows = [];
     if (tab === 'Profit & Loss') return drawPL(body);
+    if (tab === 'Balance Sheet') return drawBalance(body);
+    if (tab === 'Product Sales') return drawProductSales(body);
+    if (tab === 'Product Purchases') return drawProductPurchases(body);
     if (tab === 'Sales') return drawSales(body, views);
     if (tab === 'Sales by City' || tab === 'Sales by Channel') return drawBreakdown(body);
     if (tab === 'Ads & Channels') return drawMarketing(body);
@@ -211,6 +216,53 @@
     else body.appendChild(el('p', 'Delivered and Returned are counted in the period. Waiting for payment and Owed now show today\'s position. Days to deliver = order date to delivery date.', 'sub'));
     R.forEach(x => rows.push({ Courier: x.name, Delivered: x.delivered, Returned: x.returned, 'Delivery rate %': x.deliveryRate, 'Return rate %': x.returnRate,
       'Avg days to deliver': x.avgDeliveryDays, 'Avg days to pay': x.avgPayDays, Charges: x.charges, 'Return charges': x.retCharges, 'Waiting for payment': x.pending, 'Owed now': x.pendingAmt }));
+  }
+
+  // Balance sheet: what the company owns, what it owes, and the owner's share
+  function drawBalance(body) {
+    const r = result, b = [];
+    const sec = t => b.push({ cells: [t, ''], cls: 'h' });
+    const line = (label, amount, cls, section) => { b.push({ cells: [label, money(amount)], cls: cls || 'i' }); rows.push({ Section: section, Item: label.trim(), Amount: amount }); };
+    sec('ASSETS');
+    r.assets.cash.forEach(c => line(c.label, c.amount, 'i', 'Assets: cash and bank'));
+    line('Total cash and bank', r.assets.cashTotal, 't', 'Assets');
+    line('Money couriers will pay you (after their charges)', r.assets.courierReceivable, '', 'Assets');
+    line('Stock at cost', r.assets.stock, '', 'Assets');
+    if (r.assets.vendorAdvances.length) { r.assets.vendorAdvances.forEach(a => line('Paid in advance to ' + a.label, a.amount, 'i', 'Assets')); }
+    line('TOTAL ASSETS', r.assets.total, 't', 'Assets');
+    sec('LIABILITIES');
+    r.liabilities.payables.forEach(p => line('You owe ' + p.label, p.amount, 'i', 'Liabilities'));
+    if (!r.liabilities.payables.length) b.push({ cells: ['No vendor balance owed', money(0)], cls: 'i' });
+    line('TOTAL LIABILITIES', r.liabilities.total, 't', 'Liabilities');
+    sec("OWNER'S EQUITY");
+    line("Owner's capital (put in, minus drawings)", r.equity.capital, '', 'Equity');
+    line('Profit earned to this date', r.equity.retained, '', 'Equity');
+    line('Opening balances and other adjustments', r.equity.adjustments, '', 'Equity');
+    line("TOTAL OWNER'S EQUITY", r.equity.total, 't', 'Equity');
+    line('TOTAL LIABILITIES + EQUITY', r.totalLiabilitiesEquity, 't', 'Total');
+    body.appendChild(table(['', 'Amount'], b, 1));
+    body.appendChild(el('p', 'Opening balances and other adjustments are the opening balances you entered for accounts and vendors, plus anything the app does not track (for example advances customers paid before delivery). Record those advances and the figure shrinks.', 'sub'));
+  }
+
+  // Units and amount sold per product
+  function drawProductSales(body) {
+    const R = result.rows, T = result.totals, hasCost = !result.hideCost;
+    const head = ['Product', 'SKU', 'Units', 'Amount', 'Avg price'].concat(hasCost ? ['COGS', 'Profit'] : []);
+    const line = x => { const c = [x.product, x.sku, x.units, money(x.amount), money(x.avgPrice || (x.units ? x.amount / x.units : 0))]; if (hasCost) c.push(money(x.cogs), money(x.profit)); return c; };
+    const bd = R.map(x => ({ cells: line(x) })); bd.push({ cells: line(Object.assign({ product: 'Total', sku: '' }, T)), cls: 't' });
+    body.appendChild(table(head, bd, 2));
+    if (!R.length) body.appendChild(el('p', 'No delivered sales in this period.', 'sub'));
+    R.forEach(x => rows.push(Object.assign({ Product: x.product, SKU: x.sku, Units: x.units, Amount: x.amount, 'Avg price': x.avgPrice }, hasCost ? { COGS: x.cogs, Profit: x.profit } : {})));
+  }
+
+  // Units and amount bought per product
+  function drawProductPurchases(body) {
+    const R = result.rows, T = result.totals;
+    const bd = R.map(x => ({ cells: [x.product, x.units, money(x.amount), money(x.avgCost), x.purchases] }));
+    bd.push({ cells: ['Total', T.units, money(T.amount), '', ''], cls: 't' });
+    body.appendChild(table(['Product', 'Units', 'Amount', 'Avg cost', 'Purchases'], bd, 1));
+    if (!R.length) body.appendChild(el('p', 'No purchases in this period.', 'sub'));
+    R.forEach(x => rows.push({ Product: x.product, Units: x.units, Amount: x.amount, 'Avg cost': x.avgCost, Purchases: x.purchases }));
   }
 
   function drawPurchases(body) {

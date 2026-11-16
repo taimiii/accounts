@@ -55,6 +55,15 @@
     </div>
   </div>
 
+  <div class="card sp">
+    <h2>Appearance</h2>
+    <label>Color theme</label>
+    <select id="themeSel"><option value="">Default</option><option value="light">Light</option><option value="night">Night</option></select>
+    <label>Home page style</label>
+    <select id="layoutSel"><option value="">Default (menu below the dashboard)</option><option value="sidebar">Menu on the left</option></select>
+    <p class="muted" style="margin:10px 0 0">Saved on this device.</p>
+  </div>
+
   <div id="mgmt" class="sp">
   <p class="err" id="err"></p>
   <button class="ghost" id="reload" style="margin-bottom:12px">Reload data</button>
@@ -298,6 +307,10 @@
     } catch (e) { m.textContent = e.message; }
     $('chg').disabled = false;
   };
+
+  $('themeSel').value = localStorage.getItem('theme') || ''; $('layoutSel').value = localStorage.getItem('layout') || '';
+  $('themeSel').onchange = () => Prefs.set('theme', $('themeSel').value);
+  $('layoutSel').onchange = () => Prefs.set('layout', $('layoutSel').value);
 
   $('mgmt').classList.toggle('hide', !canManage);
   if (canManage) load();

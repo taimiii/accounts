@@ -153,6 +153,29 @@
         l.append(i, document.createTextNode(' ' + f.l)); box.appendChild(l); return;
       }
       box.appendChild(el('label', f.l + (f.req ? ' *' : '')));
+      if (f.t === 'image') {   // company logo: the picture is shrunk here and saved in the sheet, so it also works in PDFs
+        let val = cur ? String(cur) : '';
+        const prev = el('img'); prev.style.cssText = 'display:none;max-height:72px;max-width:180px;margin:0 0 8px;padding:4px;border:1px solid var(--line);border-radius:8px;background:#fff';
+        const file = el('input'); file.type = 'file'; file.accept = 'image/*';
+        const clear = el('button', 'Remove logo', 'ghost'); clear.type = 'button'; clear.style.marginTop = '8px';
+        const show = () => { prev.src = val; prev.style.display = val ? 'block' : 'none'; clear.style.display = val ? 'inline-block' : 'none'; };
+        file.onchange = () => {
+          const fr = new FileReader();
+          fr.onload = () => { const im = new Image(); im.onload = () => {
+            let w = 240, h = Math.round(im.height * w / im.width);
+            if (h > 120) { h = 120; w = Math.round(im.width * h / im.height); }
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(im, 0, 0, w, h);
+            let out = cv.toDataURL('image/png');
+            if (out.length > 42000) { const c2 = document.createElement('canvas'); c2.width = w; c2.height = h; const x = c2.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(im, 0, 0, w, h); out = c2.toDataURL('image/jpeg', 0.85); }
+            if (out.length > 42000) { toast('That picture is too detailed. Choose a simpler or smaller logo.'); return; }
+            val = out; show();
+          }; im.src = fr.result; };
+          fr.readAsDataURL(file.files[0]);
+        };
+        clear.onclick = () => { val = ''; file.value = ''; show(); };
+        inputs[f.k] = { get value() { return val; } };
+        box.append(prev, file, clear); show(); return;
+      }
       if (f.t === 'select' || f.t === 'ref') {
         picks[f.k] = cur === undefined ? '' : String(cur);
         const wrap = el('div', undefined, 'checks'); box.appendChild(wrap);

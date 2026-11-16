@@ -18,6 +18,8 @@ const Invoice = (function () {
   const CSS = `
   .inv{box-sizing:border-box;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:10pt;line-height:1.45;width:794px;padding:46px 52px;margin:0 auto}
   .inv *{box-sizing:border-box}
+  .inv-head{position:relative}
+  .inv-logo{position:absolute;left:0;top:0;max-height:62px;max-width:150px;object-fit:contain}
   .inv-title{text-align:center;font-size:26pt;font-weight:700;letter-spacing:2px}
   .inv-store{text-align:center;color:#555;margin-top:2px}
   .inv-top{display:flex;justify-content:space-between;gap:24px;margin-top:26px}
@@ -50,6 +52,8 @@ const Invoice = (function () {
   .inv.bold .inv-table td{border-bottom:1px solid #ddd}
   .inv.bold .inv-totals .inv-total{background:var(--ic,#1a73e8);color:#fff;border:0;padding:8px 10px;border-radius:6px}
 
+  .inv.bold .inv-logo,.inv.thermal .inv-logo{position:static;display:block;margin-bottom:6px}
+  .inv.thermal .inv-logo{max-height:44px}
   .inv.thermal{width:302px;padding:10px 8px;font-family:'Courier New',monospace;font-size:9pt}
   .inv.thermal .inv-title{font-size:15pt;letter-spacing:1px}
   .inv.thermal .inv-top{display:block;margin-top:10px}
@@ -95,7 +99,10 @@ const Invoice = (function () {
     const root = h('div', 'inv ' + key);
     if (/^#[0-9a-f]{3,8}$/i.test(d.store.color || '')) root.style.setProperty('--ic', d.store.color);
 
-    root.appendChild(h('div', 'inv-title', 'Invoice'));
+    const head = h('div', 'inv-head');   // the company logo sits at the top left
+    if (/^(data:image|https?:)/.test(d.store.logo || '')) { const img = document.createElement('img'); img.className = 'inv-logo'; img.alt = ''; img.src = d.store.logo; head.appendChild(img); }
+    head.appendChild(h('div', 'inv-title', 'Invoice'));
+    root.appendChild(head);
     if (d.store.name) root.appendChild(h('div', 'inv-store', d.store.name));
 
     const top = h('div', 'inv-top'), bill = h('div', 'inv-bill');
@@ -137,7 +144,7 @@ const Invoice = (function () {
 
     if (d.note) root.appendChild(h('div', 'inv-note', 'Note: ' + d.note));
     root.appendChild(h('div', 'inv-thanks', 'Thank you for your Order'));
-    root.appendChild(h('div', 'inv-foot', 'If you have any questions about this invoice, please contact ' + (d.store.phone || d.store.name)));
+    root.appendChild(h('div', 'inv-foot', 'If you have any question, Please contact ' + (d.store.phone || d.store.name)));
     return root;
   }
 

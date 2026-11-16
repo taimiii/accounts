@@ -1,3 +1,10 @@
+// Appearance chosen on this device (Users & Access > Appearance). Applied as early as possible.
+const Prefs = {
+  apply() { try { ['theme', 'layout'].forEach(k => { const v = localStorage.getItem(k); if (v) document.documentElement.setAttribute('data-' + k, v); else document.documentElement.removeAttribute('data-' + k); }); } catch (e) {} },
+  set(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} this.apply(); }
+};
+Prefs.apply();
+
 // Shared helpers: session (cleared when the tab closes) and API calls
 
 const Store = {
@@ -20,13 +27,17 @@ function can(perm) {
 // api('action', {data}) -> returns data, or throws Error(message)
 async function api(action, data) {
   const body = Object.assign({ action: action, token: Store.token }, data || {});
-  let res;
+  let res, text = '';
   try {
     // No custom headers on purpose: keeps this a simple request that Apps Script accepts
     const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
-    res = await r.json();
+    text = await r.text();
   } catch (e) {
-    throw new Error('Cannot reach the server. Check your internet and try again.');
+    throw new Error('Cannot reach the server. Check your internet connection and the address in config.js.');
+  }
+  try { res = JSON.parse(text); }
+  catch (e) {   // Google sent an error page instead of data: show what it says
+    throw new Error('The server sent an error instead of data: ' + text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220));
   }
   if (!res.ok) {
     if (res.error === 'SESSION_EXPIRED') { Store.clear(); location.replace('index.html'); }
