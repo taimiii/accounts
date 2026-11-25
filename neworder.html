@@ -104,7 +104,11 @@
         <select id="terms">
           <option>Cash On Delivery</option><option>Advanced Cash</option><option>Zero Payment</option>
         </select>
-        <div id="advBox" class="hide"><label>Advance Amount</label><input id="adv" type="text" inputmode="decimal" value="0"></div>
+        <div id="advBox" class="hide">
+          <label>Advance Amount</label><input id="adv" type="text" inputmode="decimal" value="0">
+          <label>Advance received in *</label>
+          <select id="advAcc"><option value="">Select account</option></select>
+        </div>
         <label>Courier</label>
         <select id="courier"><option value="">Select courier</option></select>
         <label>Order Source</label>
@@ -165,6 +169,7 @@
     const st = L.stores.find(x => x.StoreID === sid) || {}; rule = { free: n(st.FreeDeliveryAbove), fee: n(st.DeliveryCharge) };
     L.couriers.forEach(c => { const o = el('option', c.CourierName); o.value = c.CourierID; $('courier').appendChild(o); });
     (L.sources || []).forEach(c => { const o = el('option', c.SourceName); o.value = c.SourceID; $('source').appendChild(o); });
+    (L.accounts || []).forEach(a => { const o = el('option', a.AccountName + ' (' + a.Type + ')'); o.value = a.AccountID; $('advAcc').appendChild(o); });
     $('bdate').value = new Date().toLocaleDateString('en-CA');
     if (editId) { await loadForEdit(); return; }
     $('sheet').classList.remove('hide');
@@ -187,14 +192,14 @@
     $('ccity').value = c.city; $('cemail').value = c.email; $('phone').value = c.phone; lastPhone = c.phone;
     $('invno').value = o.invoiceNo; $('bdate').value = new Date(o.date).toLocaleDateString('en-CA');
     $('terms').value = o.terms; $('courier').value = o.courierId; $('source').value = o.sourceId || ''; $('dpct').value = o.discountPercent; $('del').value = o.deliveryCharge; delManual = true;
-    $('adv').value = o.advance; $('note').value = o.note;
+    $('adv').value = o.advance; $('advAcc').value = o.advanceAccountId || ''; $('note').value = o.note;
     $('rows').textContent = ''; rows = [];
     o.items.forEach(i => addRow({ pid: i.productId, sku: i.sku, desc: i.desc, qty: i.qty, price: i.price }));
     if (!rows.length) addRow();
     applyTerms();
     if (o.frozen) {   // paid / returned / refused / cancelled: only details can change
       frozen = true;
-      document.querySelectorAll('#rows input, #rows button, #addRow, #terms, #dpct, #adv, #del').forEach(x => x.disabled = true);
+      document.querySelectorAll('#rows input, #rows button, #addRow, #terms, #dpct, #adv, #advAcc, #del').forEach(x => x.disabled = true);
       $('custInfo').textContent = 'This invoice is ' + o.status + ': products and amounts are locked. You can still change the details above.';
     }
     $('sheet').classList.remove('hide'); $('save').disabled = false; totals();
@@ -294,11 +299,11 @@
     $('collect').textContent = c.t === 'Advanced Cash' ? 'Advance received: ' + money(c.adv) + '.  To collect on delivery: ' + money(c.cod)
       : c.t === 'Zero Payment' ? 'Free order. Nothing to collect.' : 'To collect on delivery: ' + money(c.cod);
   }
-  // Advance Amount shows only for "Advanced Cash"; Zero Payment fixes the discount at 100%
+  // Advance Amount and its account show only for "Advanced Cash"; Zero Payment fixes the discount at 100%
   function applyTerms() {
     const t = $('terms').value;
     $('advBox').classList.toggle('hide', t !== 'Advanced Cash');
-    if (t !== 'Advanced Cash') $('adv').value = '0';
+    if (t !== 'Advanced Cash') { $('adv').value = '0'; $('advAcc').value = ''; }
     if (t === 'Zero Payment') { $('dpct').value = '100'; $('dpct').disabled = true; }
     else { $('dpct').disabled = frozen; if (prevTerms === 'Zero Payment') $('dpct').value = '0'; }
     prevTerms = t; totals();
@@ -316,6 +321,7 @@
     if (bad > -1) return toast('Item ' + (bad + 1) + ': pick the product from the suggestions list.');
     if (filled.some(r => r.qty < 1)) return toast('Every item needs a quantity of 1 or more.');
     const c = calc();
+    if (c.adv > 0 && !$('advAcc').value) return toast('Choose the account where the advance was received.');
     $('save').disabled = true; $('save').textContent = 'Saving...';
     try {
       const r = await api(editId ? 'updateOrder' : 'createOrder', {
@@ -324,6 +330,7 @@
                     address: [$('a1').value.trim(), $('a2').value.trim()].filter(Boolean).join('\n') },
         items: filled.map(x => ({ productId: x.pid, qty: x.qty, unitPrice: x.price })),
         discountPercent: c.pct, deliveryCharge: c.del, billingTerms: c.t, billingDate: $('bdate').value, advance: c.adv,
+        advanceAccountId: c.adv > 0 ? $('advAcc').value : '',
         courierId: $('courier').value, sourceId: $('source').value, invoiceNote: $('note').value, overrideReason: $('reason').value
       });
       lastData = await api('getInvoiceData', { orderId: r.orderId });
