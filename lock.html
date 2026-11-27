@@ -15,6 +15,8 @@
   .tag.on { color: var(--ok); border-color: var(--ok); } .tag.bad { color: var(--err); border-color: var(--err); }
   ul.chk { margin: 8px 0; padding-left: 18px; } ul.chk li { margin: 4px 0; }
   a.lk { color: var(--brand); }
+  .snap .row { padding: 7px 0; } .snap .row.tot { font-weight: 700; border-top: 2px solid var(--text); }
+  .snap h3 { font-size: .95rem; margin: 14px 0 2px; }
 </style>
 </head>
 <body>
@@ -39,6 +41,29 @@
   </div>
 
   <div class="card sp">
+    <h2>Period closings</h2>
+    <p class="muted">Closing a period locks all its months, makes a backup and saves its profit and loss and balance sheet for every company. The Owner can still edit afterwards.</p>
+    <label>Period to close</label>
+    <select id="clPick"></select>
+    <div class="btns"><button id="clPrev">Check this period</button></div>
+    <div id="clList" class="sp">Loading...</div>
+  </div>
+
+  <div class="card hide sp" id="clCard">
+    <h2 id="clTitle"></h2>
+    <div id="clInfo"></div>
+    <div class="btns"><button id="clGo">Close this period</button><button class="ghost" id="clNo">Cancel</button></div>
+  </div>
+
+  <div class="card hide sp snap" id="snapCard">
+    <h2 id="snapTitle"></h2>
+    <label>Company</label>
+    <select id="snapStore"></select>
+    <div id="snapBody"></div>
+    <div class="btns"><button class="ghost" id="snapNo">Close</button></div>
+  </div>
+
+  <div class="card sp">
     <h2>Backups</h2>
     <p class="muted" id="bstat">Loading...</p>
     <div class="btns"><button id="bnow">Back up now</button></div>
@@ -52,11 +77,12 @@
 <script>
   if (!Store.token || !can('users')) location.replace('app.html');
   const $ = id => document.getElementById(id);
-  let pick = '';
+  let pick = '', options = [], snap = null;
 
   function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 4500); }
   function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
   const when = v => { const d = new Date(v); return v && !isNaN(d) ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''; };
+  const money = v => 'Rs ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
 
   async function loadMonths() {
     try {
@@ -89,7 +115,7 @@
   $('lockNo').onclick = () => $('lockCard').classList.add('hide');
   $('lockGo').onclick = async () => {
     $('lockGo').disabled = true; $('lockGo').textContent = 'Locking...';
-    try { await api('lockMonth', { month: pick }); toast(pick + ' is locked.'); $('lockCard').classList.add('hide'); await loadMonths(); await loadBackups(); }
+    try { await api('lockMonth', { month: pick }); toast(pick + ' is locked.'); $('lockCard').classList.add('hide'); await loadMonths(); await loadBackups(); await loadClosings(); }
     catch (e) { toast(e.message); }
     $('lockGo').disabled = false; $('lockGo').textContent = 'Lock this month';
   };
@@ -100,6 +126,79 @@
     try { await api('unlockMonth', { month: month, reason: reason }); toast(month + ' is unlocked. Lock it again when you finish.'); await loadMonths(); } catch (e) { toast(e.message); }
   }
 
+  /* ---------- Period closings ---------- */
+  async function loadClosings() {
+    try {
+      const r = await api('listClosings'), sel = $('clPick'); sel.textContent = '';
+      options = r.options.filter(o => !o.closed);
+      options.forEach((o, i) => { const op = el('option', o.label); op.value = i; sel.appendChild(op); });
+      if (!options.length) { const op = el('option', 'All finished periods are closed'); op.value = ''; sel.appendChild(op); }
+      $('clPrev').disabled = !options.length;
+      const box = $('clList'); box.textContent = '';
+      r.closings.forEach(c => {
+        const row = el('div', undefined, 'row'), l = el('div'), t = el('b', c.label);
+        t.append(el('span', 'Closed', 'tag on')); l.appendChild(t);
+        l.appendChild(el('small', 'By ' + c.by + ' on ' + when(c.at) + ' - ' + c.monthsLocked + ' months locked'));
+        const b = el('button', 'View', 'ghost'); b.onclick = () => viewSnapshot(c.id, c.label);
+        row.append(l, b); box.appendChild(row);
+      });
+      if (!r.closings.length) box.textContent = 'No period has been closed yet.';
+    } catch (e) { $('clList').textContent = 'Period closings are not set up yet. In Apps Script, run upgradeClosings once (' + e.message + ')'; $('clPrev').disabled = true; }
+  }
+
+  $('clPrev').onclick = async () => {
+    const o = options[Number($('clPick').value)]; if (!o) return;
+    $('clTitle').textContent = 'Close ' + o.label + '?';
+    const box = $('clInfo'); box.textContent = 'Checking...'; $('clGo').disabled = true; $('clCard').classList.remove('hide'); $('clCard').scrollIntoView({ behavior: 'smooth' });
+    try {
+      const p = await api('getClosingPreview', { type: o.type, year: o.year, half: o.half }); box.textContent = '';
+      const ul = el('ul', undefined, 'chk');
+      [[p.warnings.notDelivered, 'orders still Invoiced or Dispatched (not delivered yet)'], [p.warnings.unpaid, 'delivered orders still waiting for courier payment'], [p.warnings.pendingReturnCharges, 'returns whose charge is not deducted yet']]
+        .forEach(x => ul.appendChild(el('li', (x[0] ? x[0] + ' ' : 'No ') + x[1])));
+      box.append(el('p', p.toLock + ' of ' + p.months + ' months will be locked' + (p.alreadyLocked ? ' (' + p.alreadyLocked + ' already locked).' : '.'), 'muted'),
+        el('p', 'Still open in this period:', 'muted'), ul,
+        el('p', 'This is only a reminder. A backup is made first, then the profit and loss and balance sheet of every company are saved. You can still edit as Owner afterwards.', 'muted'));
+      $('clGo').disabled = !p.finished || p.alreadyClosed;
+      if (p.alreadyClosed) box.append(el('p', 'This period is already closed.', 'err'));
+    } catch (e) { box.textContent = e.message; }
+  };
+  $('clNo').onclick = () => $('clCard').classList.add('hide');
+  $('clGo').onclick = async () => {
+    const o = options[Number($('clPick').value)]; if (!o) return;
+    $('clGo').disabled = true; $('clGo').textContent = 'Closing...';
+    try {
+      const r = await api('closePeriod', { type: o.type, year: o.year, half: o.half });
+      toast(r.label + ' is closed. ' + r.monthsLocked + ' months locked.'); $('clCard').classList.add('hide');
+      await loadMonths(); await loadClosings(); await loadBackups();
+    } catch (e) { toast(e.message); }
+    $('clGo').textContent = 'Close this period';
+  };
+
+  async function viewSnapshot(id, label) {
+    try {
+      const r = await api('getClosing', { closingId: id }); snap = r.snapshots;
+      if (!snap.length) return toast('No saved figures for your companies.');
+      $('snapTitle').textContent = label + ' - saved figures';
+      const sel = $('snapStore'); sel.textContent = '';
+      snap.forEach((x, i) => { const op = el('option', x.storeName); op.value = i; sel.appendChild(op); });
+      showSnap(0); $('snapCard').classList.remove('hide'); $('snapCard').scrollIntoView({ behavior: 'smooth' });
+    } catch (e) { toast(e.message); }
+  }
+  $('snapStore').onchange = () => showSnap(Number($('snapStore').value));
+  $('snapNo').onclick = () => $('snapCard').classList.add('hide');
+  function showSnap(i) {
+    const x = snap[i], pl = x.pl, bs = x.balanceSheet, box = $('snapBody'); box.textContent = '';
+    const line = (label, v, tot) => { const r = el('div', undefined, 'row' + (tot ? ' tot' : '')); r.append(el('span', label), el('span', money(v))); box.appendChild(r); };
+    box.appendChild(el('h3', 'Profit and loss'));
+    line('Sales', pl.sales); line('Returns', pl.returns); line('Net revenue', pl.netRevenue, true); line('Cost of goods sold', pl.cogs);
+    line('Gross profit', pl.grossProfit, true); line('Direct expenses', pl.direct.total); line('Indirect expenses', pl.indirect.total); line('Net profit', pl.netProfit, true);
+    box.appendChild(el('h3', 'Balance sheet on ' + bs.asOf));
+    line('Cash and bank', bs.assets.cashTotal); line('Courier receivable', bs.assets.courierReceivable); line('Stock at cost', bs.assets.stock);
+    line('Vendor advances', bs.assets.advancesTotal); line('Total assets', bs.assets.total, true);
+    line('Total liabilities', bs.liabilities.total); line('Total equity', bs.equity.total, true);
+  }
+
+  /* ---------- Backups ---------- */
   async function loadBackups() {
     try {
       const r = await api('listBackups');
@@ -117,7 +216,7 @@
     $('bnow').disabled = false; $('bnow').textContent = 'Back up now';
   };
 
-  loadMonths(); loadBackups();
+  loadMonths(); loadClosings(); loadBackups();
 </script>
 </body>
 </html>
